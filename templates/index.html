@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Узел документации и ТО — Mind Equip</title>
+  <meta name="description" content="Локальный узел документации, паспортизации и контроля ТО оборудования по QR-коду (TLS 5810)">
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    
+    <!-- Top Instrument Bar -->
+    <header class="top-bar">
+      <div class="top-bar-inner">
+        <div class="brand-section">
+          <div class="mind-badge" aria-label="Mind Ecosystem">
+            <span class="mind-badge-glyph">M</span>
+          </div>
+          <h1 class="node-title">Узел документации и ТО</h1>
+        </div>
+        
+        <div class="node-meta">
+          <div class="tls-badge" title="Защищённый автономный TLS-узел (порт 5810)">
+            <span class="cyan-dot" aria-hidden="true"></span>
+            <span>TLS · 5810</span>
+          </div>
+          <a href="#tab-budget" class="alert-counter-badge empty" id="top-alert-badge" title="Требуется внимание по плановому ТО">
+            <span aria-hidden="true">⚠</span>
+            <span id="top-alert-count">0</span> ТО
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Viewport -->
+    <main class="main-viewport">
+      
+      <!-- Network Host Address Banner (shows WiFi IP for phone connection) -->
+      <div class="panel" id="network-info-panel" style="display: none; padding: 10px 14px; margin-bottom: 12px; font-size: 13px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+          <span style="color: var(--text-secondary);">Адрес для смартфона в Wi-Fi:</span>
+          <span class="mono" id="network-host-url" style="color: var(--accent-cyan); font-weight: 600;">https://0.0.0.0:5810</span>
+        </div>
+      </div>
+
+      <!-- Operational Maintenance & Budget Alert Banner (Auto-populated from /api/overview) -->
+      <div class="alert-banner" id="overview-alert-banner" style="display: none;">
+        <div class="alert-banner-top">
+          <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <div class="alert-content">
+            <div class="alert-headline" id="overview-alert-headline">Требуется внимание по ТО</div>
+            <div class="alert-details" id="overview-alert-details">
+              Необходимо предусмотреть в бюджете <span class="alert-sum-highlight" id="overview-alert-sum">0 ₽</span> на материалы и работы.
+            </div>
+          </div>
+        </div>
+        <div class="alert-actions">
+          <button type="button" class="btn btn-warn btn-sm" id="btn-goto-budget">План ТО и бюджет</button>
+          <a href="/api/budget-report.pdf" class="btn btn-secondary btn-sm" id="btn-download-overview-pdf" target="_blank" download>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Скачать заявку в бюджет (PDF)
+          </a>
+        </div>
+      </div>
+
+      <!-- Segmented Control Navigation -->
+      <nav class="segmented-control" role="tablist" aria-label="Режимы экрана">
+        <button type="button" class="segmented-item active" role="tab" aria-selected="true" id="tab-btn-scanner" data-target="view-scanner">
+          Сканер QR
+        </button>
+        <button type="button" class="segmented-item" role="tab" aria-selected="false" id="tab-btn-equipment" data-target="view-equipment">
+          Оборудование
+        </button>
+        <button type="button" class="segmented-item" role="tab" aria-selected="false" id="tab-btn-budget" data-target="view-budget">
+          ТО и бюджет
+          <span class="seg-badge" id="tab-badge-budget" style="display: none;">0</span>
+        </button>
+      </nav>
+
+      <!-- View 1: Scanner (Default) -->
+      <section class="tab-view active" id="view-scanner" role="tabpanel" aria-labelledby="tab-btn-scanner">
+        <div class="scanner-container">
+          
+          <div class="viewfinder-card">
+            <div class="viewfinder-viewport" id="viewfinder-box">
+              <div class="viewfinder-idle-grid"></div>
+              
+              <!-- Video Stream -->
+              <video id="qr-video" playsinline muted autoplay></video>
+              <canvas id="qr-canvas"></canvas>
+
+              <!-- Viewfinder Corner Brackets (Emissive Cyan #00F5FF) -->
+              <div class="reticle-corner top-left"></div>
+              <div class="reticle-corner top-right"></div>
+              <div class="reticle-corner bottom-left"></div>
+              <div class="reticle-corner bottom-right"></div>
+
+              <!-- Animated Scan Laser -->
+              <div class="scanner-laser" id="scanner-laser"></div>
+
+              <!-- Idle Standby Overlay -->
+              <div class="viewfinder-placeholder" id="viewfinder-standby">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+                <div class="viewfinder-hint">
+                  Наведите камеру смартфона на QR-код оборудования
+                </div>
+              </div>
+            </div>
+
+            <!-- Error message container -->
+            <div class="scanner-error-box" id="scanner-error-box" role="alert"></div>
+
+            <!-- Recognition Result Box (Shown upon QR decode) -->
+            <div class="qr-result-box" id="qr-result-box">
+              <div class="qr-result-header">
+                <span class="qr-result-label">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  QR-код успешно распознан
+                </span>
+                <span class="mono" style="font-size: 11px; color: var(--text-muted);" id="qr-timestamp">только что</span>
+              </div>
+              <div class="qr-result-raw" id="qr-result-text"></div>
+              <div class="qr-result-actions">
+                <a href="#" class="btn btn-primary" id="qr-go-link">
+                  Перейти по ссылке
+                </a>
+                <button type="button" class="btn btn-secondary" id="btn-rescan">
+                  Сканировать повторно
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Controls under Viewfinder -->
+          <div class="scanner-controls">
+            <button type="button" class="btn btn-primary" id="btn-start-scan">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+              Сканировать QR-код
+            </button>
+
+            <button type="button" class="btn btn-danger" id="btn-stop-scan" style="display: none;">
+              Остановить сканирование
+            </button>
+
+            <button type="button" class="btn btn-secondary" id="btn-upload-qr">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+              Загрузить фото с QR-кодом
+            </button>
+            <input type="file" id="qr-file-input" accept="image/*" class="sr-only">
+          </div>
+
+        </div>
+      </section>
+
+      <!-- View 2: Equipment Registry -->
+      <section class="tab-view" id="view-equipment" role="tabpanel" aria-labelledby="tab-btn-equipment" style="display: none;">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              Реестр оборудования
+              <span class="mono" style="font-size: 13px; color: var(--text-muted);" id="equipment-total-count">(0)</span>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-open-add-equip">
+              + Добавить оборудование
+            </button>
+          </div>
+
+          <div class="search-bar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" class="search-input" id="equipment-search" placeholder="Поиск по названию, инв. номеру, цеху...">
+          </div>
+
+          <div class="registry-grid" id="equipment-registry-list">
+            <div class="empty-state-notice" style="text-align: center; padding: 30px;">
+              Загрузка реестра оборудования...
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- View 3: Maintenance & Budget Plan -->
+      <section class="tab-view" id="view-budget" role="tabpanel" aria-labelledby="tab-btn-budget" style="display: none;">
+        
+        <!-- Summary Metric Cards -->
+        <div class="budget-summary-grid">
+          <div class="metric-panel">
+            <div class="metric-label">Оборудование на контроле ТО</div>
+            <div class="metric-value" id="metric-due-count">0</div>
+          </div>
+          <div class="metric-panel">
+            <div class="metric-label">Закупка материалов и ЗИП</div>
+            <div class="metric-value mono" id="metric-materials-sum">0 ₽</div>
+          </div>
+          <div class="metric-panel">
+            <div class="metric-label">Сервисные работы и дефекты</div>
+            <div class="metric-value mono" id="metric-services-sum">0 ₽</div>
+          </div>
+          <div class="metric-panel highlighted">
+            <div class="metric-label">Итого потребность в бюджете</div>
+            <div class="metric-value mono" id="metric-total-sum">0 ₽</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              График ТО и бюджетные заявки
+            </div>
+            <a href="/api/budget-report.pdf" class="btn btn-primary btn-sm" target="_blank" download>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Скачать сводную заявку (PDF)
+            </a>
+          </div>
+
+          <div class="alerts-list" id="budget-alerts-container">
+            <div class="empty-state-notice" style="text-align: center; padding: 24px;">
+              Загрузка плана ТО...
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Modal: Add New Equipment -->
+    <div class="modal-overlay" id="modal-add-equip" role="dialog" aria-modal="true" aria-labelledby="modal-add-equip-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-add-equip-title">Добавить оборудование</h2>
+          <button type="button" class="btn btn-ghost btn-icon-only" id="btn-close-modal-equip" aria-label="Закрыть">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <form id="form-add-equipment">
+          <div class="form-group">
+            <label class="form-label" for="inp-equip-name">Наименование оборудования *</label>
+            <input type="text" class="form-input" id="inp-equip-name" required placeholder="Например: Насос центробежный сетевой">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="inp-equip-inv">Инвентарный номер *</label>
+            <input type="text" class="form-input mono" id="inp-equip-inv" required placeholder="Например: ИНВ-0428-Н">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="inp-equip-model">Модель / Марка</label>
+            <input type="text" class="form-input" id="inp-equip-model" placeholder="Например: 1Д315-71а">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="inp-equip-location">Цех / Участок / Локация *</label>
+            <input type="text" class="form-input" id="inp-equip-location" required placeholder="Например: Насосная станция №2, блок А">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label class="form-label" for="inp-equip-manufacturer">Изготовитель</label>
+              <input type="text" class="form-input" id="inp-equip-manufacturer" placeholder="Завод-изготовитель">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="inp-equip-year">Год ввода</label>
+              <input type="number" class="form-input mono" id="inp-equip-year" min="1950" max="2099" placeholder="2022">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="inp-equip-status">Техническое состояние</label>
+            <select class="form-select" id="inp-equip-status">
+              <option value="good" selected>Исправно (норма)</option>
+              <option value="attention">Требует внимания</option>
+              <option value="critical">Критический дефект</option>
+            </select>
+          </div>
+
+          <div style="margin-top: 16px; display: flex; gap: 8px;">
+            <button type="submit" class="btn btn-primary" id="btn-submit-equip" style="flex: 2;">
+              Создать и сформировать QR
+            </button>
+            <button type="button" class="btn btn-secondary" id="btn-cancel-modal-equip" style="flex: 1;">
+              Отмена
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Local Offline Scripts (Zero CDN) -->
+  <script src="/static/vendor/jsQR.js"></script>
+  <script src="/static/js/scanner.js"></script>
+</body>
+</html>
