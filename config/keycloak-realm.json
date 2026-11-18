@@ -1,0 +1,121 @@
+{
+  "realm": "mind-equip",
+  "displayName": "Mind Equip — База документации и ТО",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Администратор / Главный механик — полный доступ",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "engineer",
+        "description": "Сменный инженер / Механик — отметка ТО, фотоосмотры, дефекты",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "operator",
+        "description": "Оператор / Наблюдатель — просмотр паспортов и графиков",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "mind-equip-app",
+      "name": "Mind Equip Web Application",
+      "description": "Клиент веб-приложения паспортизации и ТО оборудования",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "mind-equip-secret-2026-secure",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "https://*",
+        "http://*",
+        "https://127.0.0.1:8443/*",
+        "https://localhost:8443/*",
+        "https://127.0.0.1:8443/auth/callback",
+        "https://localhost:8443/auth/callback",
+        "https://0.0.0.0:8443/*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://*##http://*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "firstName": "Иван",
+      "lastName": "Иванов",
+      "email": "admin@mind.local",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin",
+        "engineer"
+      ]
+    },
+    {
+      "username": "engineer",
+      "enabled": true,
+      "firstName": "Петр",
+      "lastName": "Петров",
+      "email": "engineer@mind.local",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "engineer123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "engineer"
+      ]
+    },
+    {
+      "username": "operator",
+      "enabled": true,
+      "firstName": "Сергей",
+      "lastName": "Сидоров",
+      "email": "operator@mind.local",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "operator123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "operator"
+      ]
+    }
+  ]
+}

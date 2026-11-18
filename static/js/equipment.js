@@ -97,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const qrModalImage = document.getElementById('qr-modal-image');
   const qrModalInv = document.getElementById('qr-modal-inv');
   const qrModalDownloadLink = document.getElementById('qr-modal-download-link');
+  const btnRotateQrToken = document.getElementById('btn-rotate-qr-token');
 
   const lightboxModal = document.getElementById('lightbox-modal');
   const btnCloseLightbox = document.getElementById('btn-close-lightbox');
@@ -108,10 +109,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let cachedData = null;
 
   // --- Helpers ---
-  function formatRubles(amount) {
+  function formatTenge(amount) {
     const num = Math.round(Number(amount) || 0);
-    return num.toLocaleString('ru-RU') + ' ₽';
+    return num.toLocaleString('ru-RU') + ' ₸';
   }
+  const formatRubles = formatTenge;
 
   function formatDate(isoStr) {
     if (!isoStr) return '—';
@@ -238,8 +240,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (hasAlert && equipAlertBanner) {
       equipAlertBanner.style.display = 'flex';
-      const totalCost = ev.total_budget_rub || 0;
-      if (equipAlertSum) equipAlertSum.textContent = formatRubles(totalCost);
 
       if (urgentAlerts.length > 0) {
         equipAlertBanner.classList.add('critical-mode');
@@ -252,16 +252,52 @@ document.addEventListener('DOMContentLoaded', () => {
       equipAlertBanner.style.display = 'none';
     }
 
-    // Configure QR Sticker Modal
-    const qrOrigin = encodeURIComponent(window.location.origin);
-    const qrUrl = `/api/equipment/${encodeURIComponent(equipmentId)}/qr?origin=${qrOrigin}`;
+    // Configure Secure QR Sticker Modal
+    const secureQrUrl = `/api/equipment/${encodeURIComponent(equipmentId)}/secure-qr`;
 
     if (btnShowQrSticker) {
       btnShowQrSticker.onclick = () => {
-        if (qrModalImage) qrModalImage.src = qrUrl;
+        if (qrModalImage) qrModalImage.src = `${secureQrUrl}?t=${Date.now()}`;
         if (qrModalInv) qrModalInv.textContent = `${eq.name} (${eq.inventory_number})`;
-        if (qrModalDownloadLink) qrModalDownloadLink.href = qrUrl;
+        if (qrModalDownloadLink) qrModalDownloadLink.href = secureQrUrl;
         if (modalQrSticker) modalQrSticker.classList.add('open');
+      };
+    }
+
+    if (btnRotateQrToken) {
+      btnRotateQrToken.onclick = async () => {
+        const confirmed = confirm(
+          'ВНИМАНИЕ: Вы действительно хотите перевыпустить защищённый токен QR?\n\n' +
+          'Старый распечатанный QR-код агрегата немедленно перестанет распознаваться приложением. ' +
+          'Вам потребуется распечатать и наклеить новую этикетку.'
+        );
+        if (!confirmed) return;
+
+        btnRotateQrToken.disabled = true;
+        btnRotateQrToken.textContent = 'Генерация...';
+
+        try {
+          const res = await fetch(`/api/equipment/${encodeURIComponent(equipmentId)}/rotate-qr`, {
+            method: 'POST'
+          });
+
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.detail || 'Ошибка перевыпуска токена');
+          }
+
+          const data = await res.json();
+          const freshUrl = `${secureQrUrl}?t=${Date.now()}`;
+          if (qrModalImage) qrModalImage.src = freshUrl;
+          if (qrModalDownloadLink) qrModalDownloadLink.href = freshUrl;
+          alert(`Новый защищённый токен QR успешно сгенерирован!\nКлюч: ${data.token}`);
+        } catch (err) {
+          console.error('Rotate QR error:', err);
+          alert('Не удалось перевыпустить токен: ' + err.message);
+        } finally {
+          btnRotateQrToken.disabled = false;
+          btnRotateQrToken.textContent = '🔄 Перевыпустить токен';
+        }
       };
     }
   }
@@ -404,9 +440,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const tasks = data.equipment.maintenance_tasks || [];
     const history = data.equipment.maintenance_history || [];
 
-    if (equipMetricMaterials) equipMetricMaterials.textContent = formatRubles(ev.total_materials_needed_rub || 0);
-    if (equipMetricServices) equipMetricServices.textContent = formatRubles(ev.total_services_rub || 0);
-    if (equipMetricTotal) equipMetricTotal.textContent = formatRubles(ev.total_budget_rub || 0);
+    // Update Metric Cards
+    const elTasksCount = document.getElementById('equip-metric-tasks-count');
+    const elDeficitCount = document.getElementById('equip-metric-deficit-count');
+    const elDefectsCount = document.getElementById('equip-metric-defects-count');
+
+    let totalDeficitPositions = 0;
+    tasks.forEach(t => {
+      (t.materials || []).forEach(m => {
+        if ((Number(m.qty_required) || 0) > (Number(m.qty_in_stock) || 0)) {
+          totalDeficitPositions++;
+        }
+      });
+    });
+
+    const openDefects = (data.equipment.defects || []).filter(d => d.status === 'open');
+
+    if (elTasksCount) elTasksCount.textContent = tasks.length;
+    if (elDeficitCount) {
+      elDeficitCount.textContent = totalDeficitPositions;
+      elDeficitCount.className = 'metric-value mono' + (totalDeficitPositions > 0 ? ' qty-deficit-warn' : '');
+    }
+    if (elDefectsCount) {
+      elDefectsCount.textContent = openDefects.length;
+      elDefectsCount.className = 'metric-value mono' + (openDefects.length > 0 ? ' alert-urgent' : '');
+    }
 
     // Render Tasks
     if (maintTasksContainer) {
@@ -449,7 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
           // Materials Table Calculation
           const materials = task.materials || [];
-          let materialsCostSum = 0;
+          let taskDeficitCount = 0;
 
           const materialsHtml = materials.length > 0 ? `
             <div class="table-responsive-container">
@@ -457,12 +515,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <thead>
                   <tr>
                     <th>Наименование ТМЦ</th>
-                    <th>Артикул / Марка</th>
+                    <th>Артикул / ГОСТ</th>
                     <th>Норма</th>
                     <th>На складе</th>
-                    <th>К закупке</th>
-                    <th>Цена (₽)</th>
-                    <th>Сумма (₽)</th>
+                    <th>Дефицит к поставке</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -470,9 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const req = Number(m.qty_required) || 0;
                     const stock = Number(m.qty_in_stock) || 0;
                     const deficit = Math.max(0, req - stock);
-                    const price = Number(m.unit_price_rub) || 0;
-                    const rowSum = deficit * price;
-                    materialsCostSum += rowSum;
+                    if (deficit > 0) taskDeficitCount++;
 
                     return `
                       <tr>
@@ -481,10 +535,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td class="mono">${req} ${escapeHtml(m.unit || 'шт.')}</td>
                         <td class="mono">${stock} ${escapeHtml(m.unit || 'шт.')}</td>
                         <td class="mono ${deficit > 0 ? 'qty-deficit-warn' : ''}">
-                          ${deficit > 0 ? `▲ ${deficit} ${escapeHtml(m.unit || 'шт.')}` : '0'}
+                          ${deficit > 0 ? `▲ ${deficit} ${escapeHtml(m.unit || 'шт.')}` : '<span style="color: var(--state-good);">0 (норма)</span>'}
                         </td>
-                        <td class="mono">${formatRubles(price)}</td>
-                        <td class="mono" style="font-weight: 600;">${formatRubles(rowSum)}</td>
                       </tr>
                     `;
                   }).join('')}
@@ -492,8 +544,6 @@ document.addEventListener('DOMContentLoaded', () => {
               </table>
             </div>
           ` : '<div class="empty-state-notice" style="padding: 6px 0;">Нормы расхода материалов не заданы.</div>';
-
-          const totalTaskBudget = materialsCostSum + (Number(task.service_cost_rub) || 0);
 
           return `
             <div class="task-card">
@@ -530,10 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
               <div class="task-footer-cost">
                 <div style="font-size: 13.5px;">
-                  <span>Стоимость работ: </span>
-                  <span class="mono">${formatRubles(task.service_cost_rub || 0)}</span>
-                  <span style="margin-left: 10px; font-weight: 600;">Итого в бюджет: </span>
-                  <span class="mono" style="font-weight: 700; color: #FFFFFF;">${formatRubles(totalTaskBudget)}</span>
+                  ${taskDeficitCount > 0 ? `<span style="color: var(--state-warn); font-weight: 600;">▲ Дефицит ЗИП: ${taskDeficitCount} поз. к поставке</span>` : '<span style="color: var(--state-good); font-weight: 500;">✓ ЗИП укомплектован на 100%</span>'}
                 </div>
                 <button type="button" class="btn btn-primary btn-sm" onclick="openCompleteMaintModal('${escapeHtml(task.id)}', '${escapeHtml(task.code)} — ${escapeHtml(task.title)}')">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -652,16 +699,16 @@ document.addEventListener('DOMContentLoaded', () => {
     rowDiv.className = 'mat-row';
     rowDiv.id = rowId;
     rowDiv.style.display = 'grid';
-    rowDiv.style.gridTemplateColumns = '2fr 1fr 1fr 1fr 1fr 36px';
+    rowDiv.style.gridTemplateColumns = '2fr 1.2fr 0.8fr 1fr 1fr 36px';
     rowDiv.style.gap = '6px';
     rowDiv.style.alignItems = 'center';
 
     rowDiv.innerHTML = `
-      <input type="text" class="form-input row-mat-name" placeholder="Наименование (напр. Масло И-40А)" required style="padding: 6px 8px; font-size: 14px;">
-      <input type="text" class="form-input row-mat-sku" placeholder="Артикул" style="padding: 6px 8px; font-size: 14px;">
+      <input type="text" class="form-input row-mat-name" placeholder="Наименование (напр. Масло турбинное)" required style="padding: 6px 8px; font-size: 14px;">
+      <input type="text" class="form-input row-mat-sku" placeholder="Артикул / ГОСТ" style="padding: 6px 8px; font-size: 14px;">
       <input type="text" class="form-input row-mat-unit" value="л" placeholder="Ед." style="padding: 6px 8px; font-size: 14px;">
       <input type="number" step="any" min="0.01" class="form-input mono row-mat-qty" placeholder="Норма" required style="padding: 6px 8px; font-size: 14px;">
-      <input type="number" step="any" min="0" class="form-input mono row-mat-price" placeholder="Цена ₽" style="padding: 6px 8px; font-size: 14px;">
+      <input type="number" step="any" min="0" class="form-input mono row-mat-stock" placeholder="Склад" value="0" style="padding: 6px 8px; font-size: 14px;">
       <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('${rowId}').remove()" style="padding: 0; color: var(--state-crit);" title="Удалить строку">✕</button>
     `;
     maintMaterialsRows.appendChild(rowDiv);
@@ -683,20 +730,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const sku = row.querySelector('.row-mat-sku').value.trim();
         const unit = row.querySelector('.row-mat-unit').value.trim() || 'шт.';
         const qty_required = parseFloat(row.querySelector('.row-mat-qty').value) || 1;
-        const unit_price_rub = parseFloat(row.querySelector('.row-mat-price').value) || 0;
+        const qty_in_stock = parseFloat(row.querySelector('.row-mat-stock')?.value) || 0;
         if (name) {
-          materials.push({ name, sku, unit, qty_required, qty_in_stock: 0, unit_price_rub });
+          materials.push({ name, sku, unit, qty_required, qty_in_stock, unit_price_rub: 0 });
         }
       });
 
       const payload = {
         code: document.getElementById('inp-maint-code').value.trim(),
         title: document.getElementById('inp-maint-title').value.trim(),
-        interval_days: parseInt(document.getElementById('inp-maint-interval').value, 10),
+        interval_days: parseInt(document.getElementById('inp-maint-interval').value, 10) || 30,
         next_due_date: document.getElementById('inp-maint-next-date').value,
-        service_cost_rub: parseFloat(document.getElementById('inp-maint-service-cost').value) || 0,
-        notes: document.getElementById('inp-maint-notes').value.trim(),
-        materials: materials
+        service_cost_rub: 0,
+        materials,
+        notes: ''
       };
 
       try {
@@ -908,9 +955,8 @@ document.addEventListener('DOMContentLoaded', () => {
           ` : ''}
 
           <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid var(--hairline); flex-wrap: wrap; gap: 8px;">
-            <div style="font-size: 13px;">
-              <span style="color: var(--text-secondary);">Оценка затрат:</span>
-              <span class="mono" style="font-weight: 700; color: #FFFFFF; margin-left: 4px;">${formatRubles(d.estimated_cost_rub || 0)}</span>
+            <div style="font-size: 13px; color: var(--text-secondary);">
+              Журнал дефектов технологического оборудования
             </div>
             ${!isResolved ? `
               <button type="button" class="btn btn-secondary btn-sm" onclick="resolveDefect('${escapeHtml(d.id)}')">

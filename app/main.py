@@ -4,18 +4,31 @@ import logging
 import mimetypes
 import os
 import re
+import secrets
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse
+import httpx
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
-from app import config, notifications, pdf_generator, qr_service, storage
+from app import config, keycloak_auth, notifications, pdf_generator, qr_service, security_qr, storage
 from app.models import (
     CompleteMaintenanceInput,
     ConditionState,
@@ -37,7 +50,7 @@ logger = logging.getLogger("mind_equip")
 async def lifespan(app: FastAPI):
     """
     Жизненный цикл приложения:
-    при первом старте инициализирует демонстрационную базу (если не задан QR_DISABLE_AUTO_SEED=1).
+    при старте инициализирует демонстрационную базу (если не задан QR_DISABLE_AUTO_SEED=1).
     """
     if os.getenv("QR_DISABLE_AUTO_SEED") != "1":
         try:
@@ -52,8 +65,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Mind Equip — База документации и ТО оборудования",
-    version="1.0.0",
-    description="Локальный автономный узел технической документации, паспортизации и контроля ТО оборудования",
+    version="2.0.0",
+    description="Локальный автономный узел технической документации, паспортизации, контроля ТО, закрытых QR и Keycloak OIDC",
     lifespan=lifespan,
 )
 
@@ -68,6 +81,7 @@ def _render_not_found(request: Request, equipment_id: str) -> Response:
     """
     Рендерит страницу 404.html при отсутствии оборудования или возвращает адаптивный fallback.
     """
+    current_user = keycloak_auth.get_current_user(request)
     try:
         return templates.TemplateResponse(
             request=request,
@@ -76,6 +90,7 @@ def _render_not_found(request: Request, equipment_id: str) -> Response:
                 "request": request,
                 "equipment_id": equipment_id,
                 "message": "Оборудование не найдено",
+                "current_user": current_user,
             },
             status_code=status.HTTP_404_NOT_FOUND,
         )
@@ -95,6 +110,193 @@ def _render_not_found(request: Request, equipment_id: str) -> Response:
 
 
 # =============================================================================
+# Аутентификация Keycloak OIDC и сессии
+# =============================================================================
+
+@app.get("/auth/login", response_class=HTMLResponse)
+async def auth_login_page(request: Request, target: str = "/") -> Response:
+    """
+    Страница входа: вход через официальный Keycloak Realm или быстрый выбор ролей.
+    """
+    return HTMLResponse(keycloak_auth.render_login_page(target_url=target))
+
+
+@app.get("/auth/keycloak-redirect")
+async def auth_keycloak_redirect(request: Request, target: str = "/") -> Response:
+    """
+    Перенаправляет пользователя на форму входа Keycloak (Authorization Code Flow).
+    """
+    host_header = request.headers.get("host") or f"{config.HOST}:{config.PORT}"
+    scheme = request.url.scheme or "https"
+    redirect_uri = f"{scheme}://{host_header}/auth/callback"
+
+    state_data = f"{secrets.token_hex(8)}:{target}"
+    endpoints = await keycloak_auth.get_keycloak_endpoints()
+
+    params = {
+        "client_id": config.KEYCLOAK_CLIENT_ID,
+        "response_type": "code",
+        "scope": "openid profile email roles",
+        "redirect_uri": redirect_uri,
+        "state": state_data,
+    }
+    kc_auth_url = f"{endpoints['auth']}?{urlencode(params)}"
+    return RedirectResponse(url=kc_auth_url, status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/auth/callback")
+async def auth_callback(
+    request: Request,
+    code: Optional[str] = Query(default=None),
+    state: Optional[str] = Query(default=None),
+    error: Optional[str] = Query(default=None),
+) -> Response:
+    """
+    Callback от Keycloak после авторизации пользователя:
+    обменивает code на токены, извлекает профиль и роли, устанавливает cookie сессии.
+    """
+    target = "/"
+    if state and ":" in state:
+        target = state.split(":", 1)[1] or "/"
+
+    if error or not code:
+        err_msg = error or "Авторизация Keycloak была отменена"
+        return HTMLResponse(keycloak_auth.render_login_page(target_url=target, error=err_msg))
+
+    host_header = request.headers.get("host") or f"{config.HOST}:{config.PORT}"
+    scheme = request.url.scheme or "https"
+    redirect_uri = f"{scheme}://{host_header}/auth/callback"
+
+    endpoints = await keycloak_auth.get_keycloak_endpoints()
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            token_payload = {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "client_id": config.KEYCLOAK_CLIENT_ID,
+                "client_secret": config.KEYCLOAK_CLIENT_SECRET,
+            }
+            resp = await client.post(endpoints["token"], data=token_payload)
+
+            if resp.status_code != 200:
+                logger.warning("Ошибка обмена токена в Keycloak (%d): %s", resp.status_code, resp.text)
+                return HTMLResponse(keycloak_auth.render_login_page(target_url=target, error="Ошибка проверки токена Keycloak"))
+
+            tokens = resp.json()
+            access_token = tokens.get("access_token", "")
+            id_token = tokens.get("id_token", "")
+
+            # Декодируем claims из JWT (без проверки подписи, так как получен напрямую по TLS/loopback от Keycloak)
+            token_to_decode = id_token or access_token
+            claims = jwt.decode(token_to_decode, options={"verify_signature": False})
+
+            username = claims.get("preferred_username") or claims.get("sub", "user")
+            name = claims.get("name") or claims.get("given_name") or username
+            email = claims.get("email") or f"{username}@mind.local"
+            sub = claims.get("sub", username)
+
+            # Извлечение ролей
+            realm_access = claims.get("realm_access", {})
+            roles = realm_access.get("roles", [])
+            if not roles:
+                roles = ["operator"]
+
+            user = keycloak_auth.UserProfile(
+                sub=sub,
+                username=username,
+                name=name,
+                email=email,
+                roles=roles,
+                role_label=keycloak_auth._make_role_label(roles),
+                is_admin="admin" in roles,
+                is_engineer="engineer" in roles or "admin" in roles,
+            )
+
+            jwt_session = keycloak_auth.create_session_jwt(user)
+            response = RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
+            response.set_cookie(
+                key=config.SESSION_COOKIE_NAME,
+                value=jwt_session,
+                max_age=86400 * 7,
+                httponly=True,
+                samesite="lax",
+                secure=True,
+            )
+            return response
+    except Exception as e:
+        logger.exception("Исключение при обработке Keycloak callback: %s", e)
+        return HTMLResponse(keycloak_auth.render_login_page(target_url=target, error=f"Ошибка соединения с Keycloak: {e}"))
+
+
+@app.post("/auth/direct-login")
+async def auth_direct_login(
+    username: str = Form(...),
+    password: str = Form(...),
+    target: str = Form(default="/"),
+) -> Response:
+    """
+    Прямой вход по логину/паролю (через встроенные учётные записи Keycloak).
+    """
+    u = username.strip().lower()
+    acc = keycloak_auth.BUILTIN_ACCOUNTS.get(u)
+
+    if not acc or acc["password"] != password:
+        return HTMLResponse(
+            content=keycloak_auth.render_login_page(target_url=target, error="Неверный логин или пароль"),
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    user = keycloak_auth.UserProfile(
+        sub=acc["sub"],
+        username=acc["username"],
+        name=acc["name"],
+        email=acc["email"],
+        roles=acc["roles"],
+        role_label=keycloak_auth._make_role_label(acc["roles"]),
+        is_admin="admin" in acc["roles"],
+        is_engineer="engineer" in acc["roles"] or "admin" in acc["roles"],
+    )
+
+    jwt_session = keycloak_auth.create_session_jwt(user)
+    response = RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
+    response.set_cookie(
+        key=config.SESSION_COOKIE_NAME,
+        value=jwt_session,
+        max_age=86400 * 7,
+        httponly=True,
+        samesite="lax",
+        secure=True,
+    )
+    return response
+
+
+@app.get("/auth/logout")
+async def auth_logout(request: Request) -> Response:
+    """
+    Выход из учётной записи (очистка сессии).
+    """
+    response = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+    response.delete_cookie(key=config.SESSION_COOKIE_NAME)
+    return response
+
+
+@app.get("/api/auth/me")
+async def api_auth_me(request: Request) -> dict[str, Any]:
+    """
+    Возвращает профиль текущего аутентифицированного пользователя.
+    """
+    user = keycloak_auth.get_current_user(request)
+    if not user:
+        return {"authenticated": False, "user": None}
+    return {
+        "authenticated": True,
+        "user": user.model_dump(),
+    }
+
+
+# =============================================================================
 # HTML-маршруты (SPA и карточка оборудования)
 # =============================================================================
 
@@ -102,10 +304,12 @@ def _render_not_found(request: Request, equipment_id: str) -> Response:
 async def index_page(request: Request) -> Response:
     """
     Главный экран (SPA):
-    - кнопка запуска видеокамеры и QR-сканирования;
+    - кнопка запуска видеокамеры и закрытого QR-сканирования;
     - сводка уведомлений ТО и бюджета;
-    - реестр оборудования.
+    - реестр оборудования;
+    - профиль пользователя Keycloak.
     """
+    current_user = keycloak_auth.get_current_user(request)
     lan_ips = get_local_ipv4_addresses()
     return templates.TemplateResponse(
         request=request,
@@ -114,6 +318,7 @@ async def index_page(request: Request) -> Response:
             "request": request,
             "port": config.PORT,
             "lan_ips": lan_ips,
+            "current_user": current_user,
         },
     )
 
@@ -124,7 +329,7 @@ async def equipment_page(request: Request, equipment_id: str) -> Response:
     """
     Карточка агрегата по ссылке из QR-кода:
     - 4 вкладки: Документы (PDF), ТО и бюджет, Фотоосмотр, Дефекты;
-    - скачивание/печать QR-кода.
+    - скачивание/печать защищённого QR-кода.
     """
     try:
         storage.validate_safe_name(equipment_id)
@@ -135,6 +340,8 @@ async def equipment_page(request: Request, equipment_id: str) -> Response:
     if not record:
         return _render_not_found(request, equipment_id)
 
+    current_user = keycloak_auth.get_current_user(request)
+
     return templates.TemplateResponse(
         request=request,
         name="equipment.html",
@@ -142,8 +349,129 @@ async def equipment_page(request: Request, equipment_id: str) -> Response:
             "request": request,
             "equipment_id": equipment_id,
             "equipment": record,
+            "current_user": current_user,
         },
     )
+
+
+# =============================================================================
+# Защищённые QR-коды оборудования (только для камеры приложения)
+# =============================================================================
+
+class VerifyTokenPayload(BaseModel):
+    token: str
+
+
+@app.post("/api/verify-qr-token")
+async def verify_qr_token(payload: VerifyTokenPayload, request: Request) -> dict[str, Any]:
+    """
+    Валидирует отсканированный QR-код (закрытый токен MINDEQUIP:v2:... или прямую ссылку).
+    Камера приложения обращается к этому эндпоинту для мгновенной валидации и перехода к карточке.
+    """
+    current_user = keycloak_auth.get_current_user(request)
+
+    scanned_text = payload.token.strip()
+
+    # Проверяем закрытый протокол MINDEQUIP:v2:
+    if scanned_text.startswith("MINDEQUIP:"):
+        result = security_qr.verify_secure_qr_token(scanned_text)
+        result["user"] = current_user.username if current_user else "anonymous"
+        return result
+
+    # Проверка на обычные ссылки (обратная совместимость)
+    match_doc = re.search(r"/doc/([a-zA-Z0-9_\-]+)", scanned_text)
+    if match_doc:
+        eq_id = match_doc.group(1)
+        record = storage.get_equipment(eq_id)
+        if record:
+            return {
+                "is_secure_qr": False,
+                "valid": True,
+                "equipment_id": eq_id,
+                "equipment_name": record.name,
+                "inventory_number": record.inventory_number,
+                "card_url": f"/doc/{eq_id}",
+                "error": None,
+            }
+
+    # Проверка, если отсканирован просто идентификатор агрегата
+    record = storage.get_equipment(scanned_text)
+    if record:
+        return {
+            "is_secure_qr": False,
+            "valid": True,
+            "equipment_id": record.id,
+            "equipment_name": record.name,
+            "inventory_number": record.inventory_number,
+            "card_url": f"/doc/{record.id}",
+            "error": None,
+        }
+
+    return {
+        "is_secure_qr": False,
+        "valid": False,
+        "error": "QR-код не соответствует оборудованию в базе",
+        "equipment_id": None,
+        "card_url": None,
+    }
+
+
+@app.get("/api/equipment/{equipment_id}/secure-qr")
+async def get_secure_qr_png(equipment_id: str) -> Response:
+    """
+    Генерирует PNG защищённого стикера QR-кода оборудования.
+    В этот QR кодируется закрытый крипто-токен MINDEQUIP:v2:<id>:<token>,
+    который не открывается обычными сторонними камерами и доступен только приложению.
+    """
+    try:
+        storage.validate_safe_name(equipment_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    record = storage.get_equipment(equipment_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Оборудование не найдено")
+
+    png_bytes = security_qr.generate_secure_qr_png(equipment_id)
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "no-cache",
+            "Content-Disposition": f"inline; filename=\"secure_qr_{equipment_id}.png\"",
+        },
+    )
+
+
+@app.post("/api/equipment/{equipment_id}/rotate-qr")
+async def rotate_equipment_qr(equipment_id: str, request: Request) -> dict[str, Any]:
+    """
+    Перевыпускает защищённый криптографический QR-токен агрегата.
+    Требует учётную запись с ролью admin или engineer.
+    """
+    current_user = keycloak_auth.get_current_user(request)
+    if not current_user or not current_user.is_engineer:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Требуются права инженера или администратора")
+
+    try:
+        storage.validate_safe_name(equipment_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    record = storage.get_equipment(equipment_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Оборудование не найдено")
+
+    new_token = security_qr.rotate_secure_token(equipment_id)
+    new_payload = security_qr.generate_secure_qr_payload(equipment_id)
+
+    return {
+        "status": "ok",
+        "equipment_id": equipment_id,
+        "token": new_token,
+        "payload": new_payload,
+        "secure_qr_url": f"/api/equipment/{equipment_id}/secure-qr",
+    }
 
 
 # =============================================================================
@@ -197,7 +525,6 @@ async def get_stored_file(
         mime, _ = mimetypes.guess_type(str(file_path))
         media_type = mime or "application/octet-stream"
 
-    # Определение типа disposition
     if inline == 1:
         disposition_type = "inline"
     elif download == 1:
@@ -207,7 +534,6 @@ async def get_stored_file(
     else:
         disposition_type = "attachment"
 
-    # Формирование заголовка RFC 5987
     ascii_name = re.sub(r"[^a-zA-Z0-9_\-\.]", "_", file_path.name)
     encoded_name = quote(file_path.name)
     cd_header = f"{disposition_type}; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded_name}"
@@ -237,29 +563,36 @@ async def favicon() -> Response:
 @app.get("/api/health")
 async def health_check() -> dict[str, Any]:
     """
-    Проверка работоспособности сервера.
+    Проверка работоспособности сервера и интеграции Keycloak.
     """
+    kc_online = await keycloak_auth.is_keycloak_available()
     return {
         "status": "ok",
         "host": config.HOST,
         "port": config.PORT,
+        "keycloak_url": config.KEYCLOAK_URL,
+        "keycloak_realm": config.KEYCLOAK_REALM,
+        "keycloak_online": kc_online,
     }
 
 
 @app.get("/api/network-info")
 async def network_info() -> dict[str, Any]:
     """
-    Возвращает информацию о порте 5810 и доступных локальных IPv4-адресах для подключения по Wi-Fi.
+    Возвращает информацию о порте 8443 и доступных локальных IPv4-адресах для подключения по Wi-Fi.
     """
     lan_ips = get_local_ipv4_addresses()
     lan_urls = [f"https://{ip}:{config.PORT}" for ip in lan_ips]
     primary_url = lan_urls[0] if lan_urls else f"https://127.0.0.1:{config.PORT}"
+    kc_online = await keycloak_auth.is_keycloak_available()
     return {
         "host": config.HOST,
         "port": config.PORT,
         "lan_ips": lan_ips,
+        "interfaces": lan_ips,
         "lan_urls": lan_urls,
         "primary_url": primary_url,
+        "keycloak_online": kc_online,
     }
 
 
@@ -283,6 +616,7 @@ async def overview() -> dict[str, Any]:
 def _build_full_equipment_card(record: EquipmentRecord) -> dict[str, Any]:
     documents = storage.list_documents(record.id)
     evaluation = notifications.evaluate_equipment(record, docs=documents)
+    secure_payload = security_qr.generate_secure_qr_payload(record.id)
     return {
         "id": record.id,
         "status": record.status,
@@ -297,6 +631,8 @@ def _build_full_equipment_card(record: EquipmentRecord) -> dict[str, Any]:
         "documents": documents,
         "evaluation": evaluation,
         "qr_url": f"/api/equipment/{record.id}/qr",
+        "secure_payload": secure_payload,
+        "secure_qr_url": f"/api/equipment/{record.id}/secure-qr",
         "card_path": f"/doc/{record.id}",
     }
 
@@ -305,6 +641,7 @@ def _build_full_equipment_card(record: EquipmentRecord) -> dict[str, Any]:
 async def create_equipment(
     payload: EquipmentCreateInput,
     auto_passport: bool = Query(default=True),
+    request: Request = None,
 ) -> dict[str, Any]:
     """
     Добавляет новую единицу оборудования в локальную базу.
@@ -313,6 +650,7 @@ async def create_equipment(
     """
     try:
         record = storage.create_equipment(payload)
+        security_qr.get_or_create_secure_token(record.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -355,7 +693,7 @@ async def get_equipment_qr(
     origin: Optional[str] = Query(default=None),
 ) -> Response:
     """
-    Генерирует PNG QR-кода со ссылкой на карточку агрегата.
+    Генерирует стандартный QR-код со ссылкой на карточку агрегата.
     """
     try:
         storage.validate_safe_name(equipment_id)
@@ -435,6 +773,7 @@ async def upload_photo(
     condition: ConditionState = Form("good"),
     node: str = Form(""),
     comment: str = Form(""),
+    request: Request = None,
 ) -> PhotoInspection:
     """
     Загружает фотографию технического состояния агрегата со смартфона:
@@ -445,6 +784,10 @@ async def upload_photo(
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Оборудование не найдено")
 
+    current_user = keycloak_auth.get_current_user(request) if request else None
+    author_note = f" [{current_user.name}]" if current_user else ""
+    full_comment = f"{comment}{author_note}".strip()
+
     content = await file.read()
     try:
         photo = storage.save_photo_inspection(
@@ -453,7 +796,7 @@ async def upload_photo(
             content=content,
             condition=condition,
             node=node,
-            comment=comment,
+            comment=full_comment,
         )
         return photo
     except ValueError as e:
@@ -493,6 +836,7 @@ async def complete_maintenance(
     equipment_id: str,
     task_id: str,
     payload: CompleteMaintenanceInput,
+    request: Request = None,
 ) -> dict[str, Any]:
     """
     Фиксирует выполнение ТО:
@@ -501,6 +845,10 @@ async def complete_maintenance(
     - вносит запись в историю ТО;
     - возвращает обновлённую карточку оборудования.
     """
+    current_user = keycloak_auth.get_current_user(request) if request else None
+    if current_user and not payload.performer:
+        payload.performer = f"{current_user.name} ({current_user.username})"
+
     try:
         record = storage.complete_maintenance_task(equipment_id, task_id, payload)
         return _build_full_equipment_card(record)

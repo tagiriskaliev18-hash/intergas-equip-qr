@@ -40,6 +40,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const qrTimestamp = document.getElementById('qr-timestamp');
   const qrGoLink = document.getElementById('qr-go-link');
   const btnRescan = document.getElementById('btn-rescan');
+  const qrVerifiedCard = document.getElementById('qr-verified-card');
+  const qrVerifiedStatus = document.getElementById('qr-verified-status');
+  const qrVerifiedName = document.getElementById('qr-verified-name');
+  const qrVerifiedInv = document.getElementById('qr-verified-inv');
 
   // Registry Elements
   const equipmentTotalCount = document.getElementById('equipment-total-count');
@@ -77,10 +81,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Number & Currency Formatters ---
-  function formatRubles(amount) {
+  function formatTenge(amount) {
     const num = Math.round(Number(amount) || 0);
-    return num.toLocaleString('ru-RU') + ' ₽';
+    return num.toLocaleString('ru-RU') + ' ₸';
   }
+  const formatRubles = formatTenge;
 
   function formatDate(isoStr) {
     if (!isoStr) return '—';
@@ -381,7 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- QR Result Processing (Security & XSS Prevention) ---
-  function handleDecodedQr(rawContent) {
+  async function handleDecodedQr(rawContent) {
     stopCameraScanning();
 
     // Haptic pulse on mobile if supported
@@ -391,20 +396,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (standbyOverlay) standbyOverlay.style.display = 'none';
 
+    const trimmed = String(rawContent).trim();
+
     // Display RAW content strictly via textContent (Zero XSS)
     if (qrResultText) {
-      qrResultText.textContent = String(rawContent).trim();
+      qrResultText.textContent = trimmed;
     }
     if (qrTimestamp) {
       qrTimestamp.textContent = new Date().toLocaleTimeString('ru-RU');
-    }
-
-    // Determine target link
-    const targetUrl = resolveQrDestination(String(rawContent).trim());
-
-    if (qrGoLink) {
-      qrGoLink.setAttribute('href', targetUrl);
-      qrGoLink.style.display = 'inline-flex';
     }
 
     if (qrResultBox) {
@@ -413,6 +412,90 @@ document.addEventListener('DOMContentLoaded', () => {
     const controlsBox = document.querySelector('.scanner-controls');
     if (controlsBox) {
       controlsBox.style.display = 'none';
+    }
+
+    // Pending verification state
+    if (qrVerifiedCard) {
+      qrVerifiedCard.style.display = 'block';
+      if (qrVerifiedStatus) {
+        qrVerifiedStatus.className = 'qr-verified-status standard';
+        qrVerifiedStatus.innerHTML = '<span class="cyan-dot"></span> Проверка токена QR...';
+      }
+      if (qrVerifiedName) qrVerifiedName.textContent = 'Обращение к криптографическому реестру...';
+      if (qrVerifiedInv) qrVerifiedInv.textContent = '';
+    }
+
+    if (qrGoLink) {
+      qrGoLink.style.display = 'none';
+    }
+
+    try {
+      const res = await fetch('/api/verify-qr-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: trimmed })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.valid) {
+          if (qrVerifiedStatus) {
+            if (data.is_secure_qr) {
+              qrVerifiedStatus.className = 'qr-verified-status secure';
+              qrVerifiedStatus.innerHTML = '🔒 Защищённый QR (Закрытый контур Mind Equip)';
+            } else {
+              qrVerifiedStatus.className = 'qr-verified-status standard';
+              qrVerifiedStatus.innerHTML = 'ℹ Стандартный QR-код агрегата';
+            }
+          }
+          if (qrVerifiedName) {
+            qrVerifiedName.textContent = data.equipment_name || data.equipment_id;
+          }
+          if (qrVerifiedInv) {
+            qrVerifiedInv.textContent = `Инв. №: ${data.inventory_number || data.equipment_id}`;
+          }
+
+          if (qrGoLink) {
+            qrGoLink.setAttribute('href', data.card_url || `/doc/${encodeURIComponent(data.equipment_id)}`);
+            qrGoLink.textContent = 'Открыть карточку агрегата';
+            qrGoLink.style.display = 'inline-flex';
+          }
+          return;
+        } else {
+          // Token invalid or revoked
+          if (qrVerifiedStatus) {
+            qrVerifiedStatus.className = 'qr-verified-status invalid';
+            qrVerifiedStatus.innerHTML = '⚠ ' + (data.error || 'Недействительный токен QR');
+          }
+          if (qrVerifiedName) {
+            qrVerifiedName.textContent = data.equipment_id ? `Агрегат: ${data.equipment_id}` : 'Доступ отклонён';
+          }
+          if (qrVerifiedInv) {
+            qrVerifiedInv.textContent = 'Этот QR-код устарел, был перевыпущен или не принадлежит доверенному контуру.';
+          }
+          return;
+        }
+      }
+    } catch (netErr) {
+      console.warn('Verify QR error, using fallback resolver:', netErr);
+    }
+
+    // Fallback if network verification is unreachable
+    const targetUrl = resolveQrDestination(trimmed);
+    if (qrVerifiedCard) {
+      qrVerifiedCard.style.display = 'block';
+      if (qrVerifiedStatus) {
+        qrVerifiedStatus.className = 'qr-verified-status standard';
+        qrVerifiedStatus.textContent = 'Распознано содержимое';
+      }
+      if (qrVerifiedName) qrVerifiedName.textContent = trimmed;
+      if (qrVerifiedInv) qrVerifiedInv.textContent = '';
+    }
+
+    if (qrGoLink) {
+      qrGoLink.setAttribute('href', targetUrl);
+      qrGoLink.textContent = 'Перейти по ссылке';
+      qrGoLink.style.display = 'inline-flex';
     }
   }
 
@@ -460,6 +543,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnRescan) {
     btnRescan.addEventListener('click', () => {
       if (qrResultBox) qrResultBox.classList.remove('visible');
+      if (qrVerifiedCard) qrVerifiedCard.style.display = 'none';
       startCameraScanning();
     });
   }
@@ -490,11 +574,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // 1. Render Operational Alert Banner
   function renderOverviewAlerts(data) {
     const alerts = data.alerts || [];
-    const summary = data.summary || {};
     const dueCount = alerts.length;
 
     if (dueCount > 0) {
-      const totalBudgetNeeded = summary.total_budget_rub || 0;
       const isCritical = alerts.some(a => a.is_overdue || a.days_left <= 7);
 
       if (overviewAlertBanner) {
@@ -506,8 +588,10 @@ document.addEventListener('DOMContentLoaded', () => {
         overviewAlertHeadline.textContent = `Требуется внимание по ТО: ${dueCount} ед. оборудования`;
       }
 
-      if (overviewAlertDetails && overviewAlertSum) {
-        overviewAlertSum.textContent = formatRubles(totalBudgetNeeded);
+      if (overviewAlertDetails) {
+        overviewAlertDetails.textContent = isCritical
+          ? 'Зафиксированы просроченные и срочные регламентные работы. Проверьте график и наличие ЗИП.'
+          : 'Приближаются плановые регламентные работы. Проверьте готовность персонала и наличие ЗИП.';
       }
 
       // Update Header Badges
@@ -641,23 +725,27 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 3. Render Budget Plan & Alerts List
+  // 3. Render Maintenance & Spare Parts (ZIP) Plan & Alerts List
   function renderBudgetPlan(data) {
     const summary = data.summary || {};
     const alerts = data.alerts || [];
 
-    if (metricDueCount) metricDueCount.textContent = summary.due_count || alerts.length || '0';
-    if (metricMaterialsSum) metricMaterialsSum.textContent = formatRubles(summary.materials_budget_rub || 0);
-    const serviceAndDefects = (summary.service_budget_rub || 0) + (summary.defects_budget_rub || 0);
-    if (metricServicesSum) metricServicesSum.textContent = formatRubles(serviceAndDefects);
-    if (metricTotalSum) metricTotalSum.textContent = formatRubles(summary.total_budget_rub || 0);
+    const elDueCount = document.getElementById('metric-due-count');
+    const elOverdueCount = document.getElementById('metric-overdue-count');
+    const elMaterialsDeficit = document.getElementById('metric-materials-deficit');
+    const elDefectsCount = document.getElementById('metric-defects-count');
+
+    if (elDueCount) elDueCount.textContent = summary.due_count || alerts.length || '0';
+    if (elOverdueCount) elOverdueCount.textContent = summary.overdue_count || '0';
+    if (elMaterialsDeficit) elMaterialsDeficit.textContent = summary.materials_deficit_items_count || '0';
+    if (elDefectsCount) elDefectsCount.textContent = summary.open_defects_count || '0';
 
     if (!budgetAlertsContainer) return;
 
     if (alerts.length === 0) {
       budgetAlertsContainer.innerHTML = `
         <div class="empty-state-notice" style="text-align: center; padding: 24px;">
-          Все единицы оборудования находятся в графике. Срочных бюджетных расходов на ТО на ближайшие 30 дней не требуется.
+          Все единицы оборудования находятся в регламентном графике. Срочных работ на ближайшие 30 дней не запланировано.
         </div>
       `;
       return;
@@ -681,17 +769,18 @@ document.addEventListener('DOMContentLoaded', () => {
               <div style="font-size: 13.5px; color: var(--text-secondary); margin-top: 2px;">
                 Вид ТО: <strong style="color: var(--text-primary);">${escapeHtml(alert.task_code)}</strong> — ${escapeHtml(alert.task_title)}
               </div>
+              <div style="font-size: 12.5px; color: var(--text-muted); margin-top: 2px;">
+                Локация: ${escapeHtml(alert.location || '—')} · Плановая дата: <span class="mono">${formatDate(alert.next_due_date)}</span>
+              </div>
             </div>
             <span class="mono" style="font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: var(--radius-xs); ${isOverdue ? 'background: var(--state-crit-bg); color: var(--state-crit);' : 'background: var(--state-warn-bg); color: var(--state-warn);'}">
               ${daysText}
             </span>
           </div>
 
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13.5px; padding-top: 6px; border-top: 1px solid var(--hairline);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; padding-top: 6px; border-top: 1px solid var(--hairline);">
             <div>
-              <span style="color: var(--text-secondary);">К закупке ТМЦ / работы:</span>
-              <span class="mono" style="font-weight: 700; color: #FFFFFF; margin-left: 4px;">${formatRubles(alert.total_cost || 0)}</span>
-              ${alert.materials_cost ? `<span class="mono" style="color: var(--text-muted); font-size: 12px; margin-left: 6px;">(ТМЦ: ${formatRubles(alert.materials_cost)})</span>` : ''}
+              ${alert.deficit_items_count > 0 ? `<span style="color: var(--state-warn); font-weight: 600;">▲ Дефицит ЗИП: ${alert.deficit_items_count} поз. к поставке</span>` : '<span style="color: var(--state-good); font-weight: 500;">✓ ЗИП в наличии на складе (100%)</span>'}
             </div>
             <a href="/doc/${encodeURIComponent(alert.equipment_id)}" class="btn btn-secondary btn-sm">
               В карточку агрегата

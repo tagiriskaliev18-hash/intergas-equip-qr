@@ -20,13 +20,15 @@ def _format_rub_number(amount: float) -> str:
 
 def calculate_task_budget(task: MaintenanceTask) -> dict[str, Any]:
     """
-    Рассчитывает потребность в бюджете на выполнение регламентного ТО:
-    - по каждому материалу: qty_to_buy = max(0, required - in_stock), стоимость закупки и норматива;
-    - по заданию в целом: материалы к закупке, сервисные работы и суммарный требуемый бюджет.
+    Рассчитывает потребность в ЗИП и материалах на выполнение регламентного ТО:
+    - по каждому материалу: qty_to_buy = max(0, required - in_stock);
+    - количество позиций ТМЦ в дефиците (к закупке / поставке);
+    - детализированный список материалов.
     """
     materials_detail: list[dict[str, Any]] = []
     materials_to_buy_rub = 0.0
     materials_norm_rub = 0.0
+    deficit_items_count = 0
 
     for mat in task.materials:
         qty_req = float(mat.qty_required)
@@ -34,6 +36,8 @@ def calculate_task_budget(task: MaintenanceTask) -> dict[str, Any]:
         price = float(mat.unit_price_rub)
 
         qty_to_buy = max(0.0, round(qty_req - qty_stock, 3))
+        if qty_to_buy > 0:
+            deficit_items_count += 1
         cost_to_buy = round(qty_to_buy * price, 2)
         norm_cost = round(qty_req * price, 2)
 
@@ -67,6 +71,7 @@ def calculate_task_budget(task: MaintenanceTask) -> dict[str, Any]:
         "budget_required_rub": budget_required,
         "full_cycle_cost_rub": full_cycle_cost,
         "materials_detail": materials_detail,
+        "deficit_items_count": deficit_items_count,
     }
 
 
@@ -78,8 +83,8 @@ def evaluate_equipment(
     """
     Анализирует агрегат:
     - проверяет сроки и срочность регламентов ТО;
-    - формирует целевые оповещения о бюджете на закупку ТМЦ и работы;
-    - рассчитывает бюджет на горизонт 30 дней и дефектный фонд;
+    - формирует целевые оповещения о регламентных работах и дефиците ЗИП (без денежных сумм);
+    - рассчитывает потребность в ЗИП и материалах;
     - проверяет наличие паспорта и документов диагностики.
     """
     today_dt = today or date.today()
@@ -95,6 +100,7 @@ def evaluate_equipment(
 
     evaluated_tasks: list[dict[str, Any]] = []
     maintenance_budget_30d_rub = 0.0
+    total_materials_deficit_positions = 0
 
     for task in record.maintenance_tasks:
         try:
@@ -104,6 +110,8 @@ def evaluate_equipment(
 
         days_left = (due_dt - today_dt).days
         task_budget = calculate_task_budget(task)
+        def_count = task_budget.get("deficit_items_count", 0)
+        total_materials_deficit_positions += def_count
 
         if days_left < 0:
             urgency = "overdue"
@@ -115,25 +123,29 @@ def evaluate_equipment(
         elif days_left <= config.URGENT_ALERT_HORIZON_DAYS:
             urgency = "urgent"
             urgency_label = "Срочно ТО"
-            total_fmt = _format_rub_number(task_budget["budget_required_rub"])
-            mat_fmt = _format_rub_number(task_budget["materials_to_buy_rub"])
-            svc_fmt = _format_rub_number(task_budget["service_cost_rub"])
-            alert_message = (
-                f"Через {days_left} дн. плановое {task.code} ({task.title}). "
-                f"Необходимо предусмотреть в бюджете {total_fmt} ₽ "
-                f"(закупка ТМЦ: {mat_fmt} ₽, работы: {svc_fmt} ₽)."
-            )
+            if def_count > 0:
+                alert_message = (
+                    f"Через {days_left} дн. плановое {task.code} ({task.title}). "
+                    f"Требуется ревизия узлов и комплектация ЗИП (дефицит: {def_count} поз.)."
+                )
+            else:
+                alert_message = (
+                    f"Через {days_left} дн. плановое {task.code} ({task.title}). "
+                    f"Требуется ревизия узлов и подготовка рабочего места (ЗИП укомплектован)."
+                )
         elif days_left <= config.BUDGET_ALERT_HORIZON_DAYS:
             urgency = "soon"
-            urgency_label = "Скоро ТО — заложить в бюджет"
-            total_fmt = _format_rub_number(task_budget["budget_required_rub"])
-            mat_fmt = _format_rub_number(task_budget["materials_to_buy_rub"])
-            svc_fmt = _format_rub_number(task_budget["service_cost_rub"])
-            alert_message = (
-                f"Через {days_left} дн. плановое {task.code} ({task.title}). "
-                f"Необходимо предусмотреть в бюджете {total_fmt} ₽ "
-                f"(закупка ТМЦ: {mat_fmt} ₽, работы: {svc_fmt} ₽)."
-            )
+            urgency_label = "Скоро регламентное ТО"
+            if def_count > 0:
+                alert_message = (
+                    f"Через {days_left} дн. плановое {task.code} ({task.title}). "
+                    f"Запланируйте поставку ЗИП (дефицит: {def_count} поз.)."
+                )
+            else:
+                alert_message = (
+                    f"Через {days_left} дн. плановое {task.code} ({task.title}). "
+                    f"Запланируйте проведение регламентных работ (ЗИП в наличии)."
+                )
         else:
             urgency = "ok"
             urgency_label = "В графике"
@@ -155,6 +167,7 @@ def evaluate_equipment(
             "urgency_label": urgency_label,
             "alert_message": alert_message,
             "budget": task_budget,
+            "deficit_items_count": def_count,
             "notes": task.notes,
         })
 
@@ -195,6 +208,7 @@ def evaluate_equipment(
         "tasks": evaluated_tasks,
         "urgent_alerts": urgent_alerts,
         "budget_alerts": budget_alerts,
+        "materials_deficit_items_count": total_materials_deficit_positions,
         "open_defects_count": open_defects_count,
         "defects_budget_rub": defects_budget_rub,
         "total_materials_needed_rub": total_materials_needed_rub,
@@ -210,7 +224,7 @@ def build_overview(today: date | None = None) -> dict[str, Any]:
     Формирует общую сводку по всему оборудованию предприятия:
     - список агрегатов с их оценками;
     - упорядоченный список предупреждений (просроченные первыми);
-    - агрегированные бюджетные показатели.
+    - агрегированные технические показатели (сроки, ЗИП, дефекты).
     """
     today_dt = today or date.today()
     records = storage.list_equipment()
@@ -239,6 +253,7 @@ def build_overview(today: date | None = None) -> dict[str, Any]:
                     "urgency": task_info["urgency"],
                     "urgency_label": task_info["urgency_label"],
                     "message": task_info["alert_message"],
+                    "deficit_items_count": task_info.get("deficit_items_count", 0),
                     "budget_required_rub": b["budget_required_rub"],
                     "total_cost": b["budget_required_rub"],
                     "materials_to_buy_rub": b["materials_to_buy_rub"],
@@ -253,6 +268,8 @@ def build_overview(today: date | None = None) -> dict[str, Any]:
     overdue_count = sum(1 for a in alerts if a["urgency"] == "overdue")
     upcoming_30d_count = sum(1 for a in alerts if a["urgency"] in ("urgent", "soon"))
     open_defects_count = sum(e["open_defects_count"] for e in equipment_list)
+    materials_deficit_items_count = sum(e.get("materials_deficit_items_count", 0) for e in equipment_list)
+
     materials_budget_rub = round(sum(float(a["materials_to_buy_rub"]) for a in alerts), 2)
     service_budget_rub = round(sum(float(a["service_cost_rub"]) for a in alerts), 2)
     maintenance_budget_30d_rub = round(sum(e["maintenance_budget_30d_rub"] for e in equipment_list), 2)
@@ -268,6 +285,7 @@ def build_overview(today: date | None = None) -> dict[str, Any]:
             "overdue_count": overdue_count,
             "upcoming_30d_count": upcoming_30d_count,
             "open_defects_count": open_defects_count,
+            "materials_deficit_items_count": materials_deficit_items_count,
             "materials_budget_rub": materials_budget_rub,
             "service_budget_rub": service_budget_rub,
             "maintenance_budget_30d_rub": maintenance_budget_30d_rub,

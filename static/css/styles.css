@@ -1682,3 +1682,191 @@ img, video {
   line-height: 1.5;
   margin-bottom: 24px;
 }
+
+/* ==========================================================================
+   Keycloak Authentication & User Profile Styling
+   ========================================================================== */
+.user-auth-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--panel-sub);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  color: var(--text-primary);
+  max-width: 280px;
+  transition: border-color var(--transition-fast);
+}
+
+.user-pill:hover {
+  border-color: var(--hairline-hover);
+}
+
+.user-avatar-glyph {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.user-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+}
+
+.role-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.role-tag.admin, .role-tag.администратор {
+  background: rgba(123, 47, 247, 0.18);
+  color: #B584FF;
+  border: 1px solid rgba(123, 47, 247, 0.4);
+}
+
+.role-tag.engineer, .role-tag.инженер {
+  background: rgba(0, 245, 255, 0.12);
+  color: #00F5FF;
+  border: 1px solid rgba(0, 245, 255, 0.35);
+}
+
+.role-tag.operator, .role-tag.оператор {
+  background: rgba(30, 144, 255, 0.12);
+  color: #70B6FF;
+  border: 1px solid rgba(30, 144, 255, 0.3);
+}
+
+.btn-logout {
+  display: inline-block;
+  margin-left: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.btn-logout:hover {
+  color: var(--state-danger);
+}
+
+.btn-login {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 245, 255, 0.08);
+  border: 1px solid rgba(0, 245, 255, 0.3);
+  color: var(--accent-cyan);
+  transition: all var(--transition-fast);
+}
+
+.btn-login:hover {
+  background: rgba(0, 245, 255, 0.16);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 12px rgba(0, 245, 255, 0.25);
+  color: #FFFFFF;
+}
+
+/* ==========================================================================
+   Proprietary Secure QR Badges & Verified Output
+   ========================================================================== */
+.secure-qr-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 245, 255, 0.1);
+  border: 1px solid rgba(0, 245, 255, 0.35);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  margin-bottom: 8px;
+}
+
+.secure-qr-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0 auto 12px auto;
+  max-width: 320px;
+}
+
+.secure-qr-hint strong {
+  color: var(--accent-cyan);
+}
+
+.qr-verified-card {
+  background: var(--panel-sub);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin: 10px 0;
+  text-align: left;
+}
+
+.qr-verified-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.qr-verified-status.secure {
+  color: var(--accent-cyan);
+}
+
+.qr-verified-status.standard {
+  color: #70B6FF;
+}
+
+.qr-verified-status.invalid {
+  color: var(--state-danger);
+}
+
+.qr-verified-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.qr-verified-inv {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 480px) {
+  .user-name {
+    max-width: 75px;
+  }
+  .node-title {
+    max-width: 120px;
+  }
+  .top-bar-inner {
+    gap: 8px;
+  }
+}

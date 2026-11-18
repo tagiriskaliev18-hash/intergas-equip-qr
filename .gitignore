@@ -1,9 +1,10 @@
 venv/
+tools/
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 certs/*.pem
-documents/
-!documents/.gitkeep
+/documents/
+!/documents/.gitkeep
 .env

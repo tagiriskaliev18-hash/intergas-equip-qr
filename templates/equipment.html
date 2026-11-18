@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Паспорт и ТО агрегата — Mind Equip</title>
-  <meta name="description" content="Электронный паспорт оборудования, графики ТО, фотоосмотры и дефектные ведомости в локальной базе">
+  <title>Интергаз Центральная Азия — Карточка агрегата (ЛПУ / ГРС / КС)</title>
+  <meta name="description" content="АО «Интергаз Центральная Азия» — электронный паспорт оборудования, графики ТО, фотоосмотры и дефектные ведомости ЛПУ, ГРС и КС">
   <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
@@ -14,16 +14,33 @@
     <header class="top-bar">
       <div class="top-bar-inner">
         <div class="brand-section">
-          <a href="/" class="mind-badge" aria-label="Mind Ecosystem (На главную)">
-            <span class="mind-badge-glyph">M</span>
+          <a href="/" class="mind-badge" aria-label="Интергаз Центральная Азия (На главную)" style="width: 28px; height: 28px;">
+            <span class="mind-badge-glyph" style="font-size: 11px; letter-spacing: 0;">ICA</span>
           </a>
-          <h1 class="node-title">Карточка агрегата</h1>
+          <h1 class="node-title">Интергаз Центральная Азия · Карточка агрегата</h1>
         </div>
         
         <div class="node-meta">
-          <div class="tls-badge" title="Защищённый автономный TLS-узел">
+          <div class="tls-badge" title="Защищённый автономный TLS-узел (порт 8443)">
             <span class="cyan-dot" aria-hidden="true"></span>
-            <span>TLS · 5810</span>
+            <span>TLS · 8443</span>
+          </div>
+
+          <!-- Keycloak User Authentication Badge -->
+          <div class="user-auth-wrap">
+            {% if current_user %}
+            <div class="user-pill" title="Keycloak Realm: mind-equip ({{ current_user.email }})">
+              <span class="user-avatar-glyph">👤</span>
+              <span class="user-name">{{ current_user.name }}</span>
+              <span class="role-tag {{ current_user.role_label }}">{{ current_user.role_label }}</span>
+              <a href="/auth/logout" class="btn-logout" title="Выйти из системы">Выйти</a>
+            </div>
+            {% else %}
+            <a href="/auth/login" class="btn-login" id="btn-top-login" title="Войти в систему через Keycloak">
+              <span class="cyan-dot" aria-hidden="true"></span>
+              <span>Войти</span>
+            </a>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -93,7 +110,7 @@
               <polyline points="7 10 12 15 17 10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            Бюджетная заявка (PDF)
+            График ТО и ЗИП (PDF)
           </a>
         </div>
       </section>
@@ -109,16 +126,16 @@
           <div class="alert-content">
             <div class="alert-headline" id="equip-alert-headline">Скоро плановое ТО</div>
             <div class="alert-details" id="equip-alert-details">
-              Необходимо предусмотреть в бюджете <span class="alert-sum-highlight" id="equip-alert-sum">0 ₽</span> на закупку материалов и работы.
+              Приближается срок планового ТО. Проверьте наличие запасных частей и материалов (ЗИП) на складе.
             </div>
           </div>
         </div>
         <div class="alert-actions">
           <button type="button" class="btn btn-warn btn-sm" id="btn-equip-tab-budget">
-            Перейти к расчёту ТО
+            График ТО и ЗИП
           </button>
           <a href="#" class="btn btn-secondary btn-sm" id="btn-equip-alert-pdf" target="_blank" download>
-            Скачать расчёт (PDF)
+            Скачать график ТО и ЗИП (PDF)
           </a>
         </div>
       </div>
@@ -129,7 +146,7 @@
           Документы
         </button>
         <button type="button" class="segmented-item" role="tab" aria-selected="false" id="tab-btn-maint" data-target="section-maint" style="font-size: 13px; padding: 0 4px;">
-          ТО и бюджет
+          График ТО и ЗИП
         </button>
         <button type="button" class="segmented-item" role="tab" aria-selected="false" id="tab-btn-photos" data-target="section-photos" style="font-size: 13px; padding: 0 4px;">
           Фотоосмотр
@@ -212,24 +229,24 @@
       <!-- Section 2: Maintenance Tasks & Budget -->
       <section class="tab-view" id="section-maint" role="tabpanel" aria-labelledby="tab-btn-maint" style="display: none;">
         
-        <!-- Budget Evaluation Metrics for this equipment -->
+        <!-- Maintenance Evaluation Metrics for this equipment -->
         <div class="budget-summary-grid">
           <div class="metric-panel">
-            <div class="metric-label">Дефицит ТМЦ и ЗИП</div>
-            <div class="metric-value mono" id="equip-metric-materials">0 ₽</div>
+            <div class="metric-label">Видов ТО на контроле</div>
+            <div class="metric-value mono" id="equip-metric-tasks-count">0</div>
           </div>
           <div class="metric-panel">
-            <div class="metric-label">Сервисные работы</div>
-            <div class="metric-value mono" id="equip-metric-services">0 ₽</div>
+            <div class="metric-label">Позиций ЗИП в дефиците</div>
+            <div class="metric-value mono" id="equip-metric-deficit-count">0</div>
           </div>
           <div class="metric-panel highlighted">
-            <div class="metric-label">Итого потребность в бюджете ТО</div>
-            <div class="metric-value mono" id="equip-metric-total">0 ₽</div>
+            <div class="metric-label">Открытых дефектов</div>
+            <div class="metric-value mono" id="equip-metric-defects-count">0</div>
           </div>
           <div class="metric-panel">
             <div class="metric-label">Действие</div>
             <a href="#" class="btn btn-primary btn-sm" id="btn-download-maint-budget-pdf" target="_blank" download style="margin-top: 4px;">
-              Скачать расчёт (PDF)
+              Скачать график ТО и ЗИП (PDF)
             </a>
           </div>
         </div>
@@ -260,7 +277,7 @@
               </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
               <div class="form-group">
                 <label class="form-label" for="inp-maint-interval">Периодичность (дней) *</label>
                 <input type="number" class="form-input mono" id="inp-maint-interval" required min="1" max="3650" value="30">
@@ -269,10 +286,7 @@
                 <label class="form-label" for="inp-maint-next-date">Плановая дата следующего ТО *</label>
                 <input type="date" class="form-input mono" id="inp-maint-next-date" required>
               </div>
-              <div class="form-group">
-                <label class="form-label" for="inp-maint-service-cost">Стоимость работ (₽)</label>
-                <input type="number" class="form-input mono" id="inp-maint-service-cost" min="0" step="100" value="0">
-              </div>
+              <input type="hidden" id="inp-maint-service-cost" value="0">
             </div>
 
             <!-- Dynamic Materials Table -->
@@ -434,10 +448,7 @@
               <input type="text" class="form-input" id="inp-defect-action" value="Выполнить ремонт / замену узла">
             </div>
 
-            <div class="form-group">
-              <label class="form-label" for="inp-defect-cost">Ориентировочная стоимость устранения (₽)</label>
-              <input type="number" class="form-input mono" id="inp-defect-cost" min="0" step="500" value="0">
-            </div>
+            <input type="hidden" id="inp-defect-cost" value="0">
 
             <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
               Зафиксировать дефект в журнале
@@ -509,9 +520,9 @@
 
     <!-- Modal: QR Code Sticker Preview & Print -->
     <div class="modal-overlay" id="modal-qr-sticker" role="dialog" aria-modal="true" aria-labelledby="modal-qr-title">
-      <div class="modal-card" style="text-align: center; max-width: 400px;">
+      <div class="modal-card" style="text-align: center; max-width: 420px;">
         <div class="modal-header">
-          <h2 class="modal-title" id="modal-qr-title">QR-этикетка оборудования</h2>
+          <h2 class="modal-title" id="modal-qr-title">Защищённый QR-код агрегата</h2>
           <button type="button" class="btn btn-ghost btn-icon-only" id="btn-close-qr-modal" aria-label="Закрыть">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -519,17 +530,29 @@
             </svg>
           </button>
         </div>
-        <div style="padding: 16px 0;">
-          <img id="qr-modal-image" src="" alt="QR-код агрегата" style="margin: 0 auto; max-width: 260px; border-radius: var(--radius-sm); border: 1px solid var(--hairline-hover); background: #FFFFFF; padding: 10px;">
+        <div style="padding: 12px 0;">
+          <div class="secure-qr-badge">
+            <span class="cyan-dot"></span>
+            <span>Закрытый контур Mind Equip</span>
+          </div>
+          <p class="secure-qr-hint">
+            Данный код сканируется <strong>только через встроенную камеру приложения</strong>. Обычные камеры смартфонов не открывают веб-ссылку.
+          </p>
+          <img id="qr-modal-image" src="/api/equipment/{{ equipment_id }}/secure-qr" alt="Защищённый QR-код агрегата" style="margin: 0 auto; max-width: 260px; border-radius: var(--radius-sm); border: 1px solid var(--hairline-hover); background: #FFFFFF; padding: 10px;">
           <div class="mono" style="font-size: 13px; color: var(--text-secondary); margin-top: 10px;" id="qr-modal-inv"></div>
         </div>
-        <div style="display: flex; gap: 8px; justify-content: center;">
-          <a href="#" id="qr-modal-download-link" class="btn btn-primary" download="qr_sticker.png">
-            Скачать PNG
+        <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+          <a href="/api/equipment/{{ equipment_id }}/secure-qr" id="qr-modal-download-link" class="btn btn-primary btn-sm" download="secure_qr_{{ equipment_id }}.png">
+            Скачать стикер (PNG)
           </a>
-          <button type="button" class="btn btn-secondary" onclick="window.print()">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="window.print()">
             Печать
           </button>
+          {% if current_user and current_user.is_engineer %}
+          <button type="button" class="btn btn-warn btn-sm" id="btn-rotate-qr-token" title="Сгенерировать новый ключ. Прежний распечатанный QR-код перестанет работать.">
+            🔄 Перевыпустить токен
+          </button>
+          {% endif %}
         </div>
       </div>
     </div>

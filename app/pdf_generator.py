@@ -27,7 +27,7 @@ _SEVERITY_LABELS: dict[str, str] = {
 
 def _format_rub(amount: float) -> str:
     rounded = int(round(amount))
-    return f"{rounded:,}".replace(",", " ") + " ₽"
+    return f"{rounded:,}".replace(",", " ") + " ₸"
 
 
 class MindBasePDF(FPDF):
@@ -310,24 +310,24 @@ def generate_diagnostics_pdf(
 
 def generate_schedule_pdf(record: EquipmentRecord) -> bytes:
     """
-    Генерирует утверждённый график планово-предупредительного ремонта и ТО агрегата.
+    Генерирует утверждённый график планово-предупредительного ремонта и ЗИП агрегата.
     """
-    pdf = MindBasePDF(doc_title="ГРАФИК ТО И РЕМОНТОВ", inv_number=record.inventory_number)
+    pdf = MindBasePDF(doc_title="ГРАФИК ТО И ЗИП", inv_number=record.inventory_number)
     pdf.alias_nb_pages()
     pdf.add_page()
 
     pdf.draw_top_banner(
         system_category="Планово-предупредительный ремонт (ППР)",
-        title="ПЛАН-ГРАФИК ТЕХНИЧЕСКОГО ОБСЛУЖИВАНИЯ",
+        title="ПЛАН-ГРАФИК ТЕХНИЧЕСКОГО ОБСЛУЖИВАНИЯ И ЗИП",
         equipment_name=record.name,
         inv_number=record.inventory_number,
         location=record.location,
     )
 
-    pdf.draw_section_heading("1. ПЛАНОВЫЕ СРОКИ И СТОИМОСТЬ СЕРВИСНЫХ РАБОТ")
+    pdf.draw_section_heading("1. ПЛАНОВЫЕ СРОКИ И ОТВЕТСТВЕННЫЕ СЛУЖБЫ")
 
-    headers = ["Код", "Регламентные работы", "Интервал", "Посл. дата", "След. дата", "Работы (₽)"]
-    with pdf.table(col_widths=(20, 68, 22, 24, 24, 22), text_align=("CENTER", "LEFT", "CENTER", "CENTER", "CENTER", "RIGHT"), line_height=5.2) as table:
+    headers = ["Код", "Регламентные работы", "Интервал", "Посл. дата", "След. дата", "Ответственный"]
+    with pdf.table(col_widths=(18, 62, 22, 24, 24, 30), text_align=("CENTER", "LEFT", "CENTER", "CENTER", "CENTER", "LEFT"), line_height=5.2) as table:
         head_row = table.row()
         for h in headers:
             head_row.cell(h)
@@ -338,29 +338,30 @@ def generate_schedule_pdf(record: EquipmentRecord) -> bytes:
             r.cell(f"{t.interval_days} дн.")
             r.cell(t.last_completed_date or "—")
             r.cell(t.next_due_date)
-            r.cell(f"{int(t.service_cost_rub):,} ₽".replace(",", " "))
+            r.cell(t.responsible or "Служба эксплуатации")
 
     pdf.ln(5)
 
     pdf.draw_section_heading("2. НОРМЫ РАСХОДА МАТЕРИАЛОВ И ЗИП НА ОБСЛУЖИВАНИЕ")
 
-    mat_headers = ["Вид ТО", "Материал / Запчасть", "Артикул", "Норма", "Склад", "Цена (₽)"]
+    mat_headers = ["Вид ТО", "Материал / Запчасть", "Артикул / ГОСТ", "Норма", "Склад", "Дефицит к поставке"]
     has_materials = any(t.materials for t in record.maintenance_tasks)
 
     if has_materials:
-        with pdf.table(col_widths=(22, 64, 28, 20, 20, 26), text_align=("CENTER", "LEFT", "LEFT", "CENTER", "CENTER", "RIGHT"), line_height=5.2) as table:
+        with pdf.table(col_widths=(20, 64, 30, 22, 22, 22), text_align=("CENTER", "LEFT", "LEFT", "CENTER", "CENTER", "CENTER"), line_height=5.2) as table:
             head_row = table.row()
             for h in mat_headers:
                 head_row.cell(h)
             for t in record.maintenance_tasks:
                 for m in t.materials:
+                    deficit = max(0.0, round(float(m.qty_required) - float(m.qty_in_stock), 3))
                     r = table.row()
                     r.cell(t.code)
                     r.cell(m.name)
                     r.cell(m.sku or "—")
                     r.cell(f"{m.qty_required:g} {m.unit}")
                     r.cell(f"{m.qty_in_stock:g} {m.unit}")
-                    r.cell(f"{int(m.unit_price_rub):,} ₽".replace(",", " "))
+                    r.cell(f"{deficit:g} {m.unit}" if deficit > 0 else "0 (в норме)")
     else:
         pdf.set_font("ReportSans", "", 9)
         pdf.set_text_color(100, 105, 115)
@@ -372,7 +373,7 @@ def generate_schedule_pdf(record: EquipmentRecord) -> bytes:
 
 def generate_defect_sheet_pdf(record: EquipmentRecord) -> bytes:
     """
-    Генерирует дефектную ведомость оборудования с расчётом затрат на устранение.
+    Генерирует дефектную ведомость оборудования (технические параметры, дефекты и статус).
     """
     pdf = MindBasePDF(doc_title="ДЕФЕКТНАЯ ВЕДОМОСТЬ", inv_number=record.inventory_number)
     pdf.alias_nb_pages()
@@ -388,13 +389,12 @@ def generate_defect_sheet_pdf(record: EquipmentRecord) -> bytes:
 
     open_defects = [d for d in record.defects if d.status == "open"]
     resolved_defects = [d for d in record.defects if d.status == "resolved"]
-    total_cost = sum(d.estimated_cost_rub for d in open_defects)
 
-    pdf.draw_section_heading(f"1. ПЕРЕЧЕНЬ ВЫЯВЛЕННЫХ ДЕФЕКТОВ (ТРЕБУЕТСЯ УСТРАНЕНИЕ)")
+    pdf.draw_section_heading("1. ПЕРЕЧЕНЬ ВЫЯВЛЕННЫХ ДЕФЕКТОВ (ТРЕБУЕТСЯ УСТРАНЕНИЕ)")
 
     if open_defects:
-        headers = ["№", "Узел / Элемент", "Описание дефекта", "Степень", "Мероприятие", "Сумма (₽)"]
-        with pdf.table(col_widths=(10, 36, 52, 22, 38, 22), text_align=("CENTER", "LEFT", "LEFT", "CENTER", "LEFT", "RIGHT"), line_height=5.2) as table:
+        headers = ["№", "Узел / Элемент", "Описание дефекта", "Степень", "Мероприятие", "Статус"]
+        with pdf.table(col_widths=(10, 36, 54, 24, 36, 20), text_align=("CENTER", "LEFT", "LEFT", "CENTER", "LEFT", "CENTER"), line_height=5.2) as table:
             head_row = table.row()
             for h in headers:
                 head_row.cell(h)
@@ -405,14 +405,13 @@ def generate_defect_sheet_pdf(record: EquipmentRecord) -> bytes:
                 r.cell(d.description)
                 r.cell(_SEVERITY_LABELS.get(d.severity, d.severity))
                 r.cell(d.recommended_action)
-                r.cell(f"{int(d.estimated_cost_rub):,} ₽".replace(",", " "))
+                r.cell("Открыт")
 
         pdf.ln(3)
         pdf.set_fill_color(240, 243, 248)
-        pdf.set_font("ReportSans", "B", 10)
+        pdf.set_font("ReportSans", "B", 9.5)
         pdf.set_text_color(20, 24, 38)
-        pdf.cell(140, 7, "ИТОГО ОЦЕНОЧНЫЕ ЗАТРАТЫ НА УСТРАНЕНИЕ ДЕФЕКТОВ:", border=1, align="R", fill=True)
-        pdf.cell(40, 7, _format_rub(total_cost), border=1, align="R", fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(180, 7, f"ИТОГО НА КОНТРОЛЕ ДЕФЕКТОВ К УСТРАНЕНИЮ: {len(open_defects)} шт.", border=1, align="L", fill=True, new_x="LMARGIN", new_y="NEXT")
     else:
         pdf.set_font("ReportSans", "", 9)
         pdf.set_text_color(16, 185, 129)
@@ -439,13 +438,13 @@ def generate_defect_sheet_pdf(record: EquipmentRecord) -> bytes:
 
 def generate_budget_pdf(
     records: list[EquipmentRecord],
-    title: str = "Бюджетная заявка на проведение ТО и закупку материалов",
+    title: str = "Сводный график регламентных работ и ведомость потребности в ЗИП",
 ) -> bytes:
     """
-    Генерирует сводную бюджетную заявку на закупку недостающих материалов
-    и проведение регламентных работ ТО по оборудованию.
+    Генерирует сводный график регламентных работ и ведомость потребности в ЗИП (материалах)
+    по оборудованию ЛПУ, ГРС и КС АО «Интергаз Центральная Азия».
     """
-    pdf = MindBasePDF(doc_title="БЮДЖЕТНАЯ ЗАЯВКА НА ТО", orientation="L")
+    pdf = MindBasePDF(doc_title="СВОДНЫЙ ГРАФИК ТО И ЗИП", orientation="L")
     pdf.alias_nb_pages()
     pdf.add_page()
 
@@ -459,10 +458,10 @@ def generate_budget_pdf(
     pdf.set_xy(23, 17)
     pdf.set_font("ReportSans", "B", 8)
     pdf.set_text_color(0, 245, 255)
-    pdf.cell(160, 4, "СВОДНОЕ ПЛАНИРОВАНИЕ ЗАТРАТ НА ТЕХНИЧЕСКОЕ ОБСЛУЖИВАНИЕ", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(160, 4, "АО «ИНТЕРГАЗ ЦЕНТРАЛЬНАЯ АЗИЯ» // ОБОРУДОВАНИЕ ЛПУ, ГРС И КС", new_x="LMARGIN", new_y="NEXT")
 
     pdf.set_x(23)
-    pdf.set_font("ReportSans", "B", 13)
+    pdf.set_font("ReportSans", "B", 12.5)
     pdf.set_text_color(245, 247, 250)
     pdf.cell(160, 7, title, new_x="LMARGIN", new_y="NEXT")
 
@@ -481,7 +480,7 @@ def generate_budget_pdf(
     pdf.set_x(214)
     pdf.set_font("ReportSans", "B", 10)
     pdf.set_text_color(0, 245, 255)
-    pdf.cell(61, 5, "НА УТВЕРЖДЕНИЕ", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(61, 5, "В ПРОИЗВОДСТВО", align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.set_x(214)
     pdf.set_font("ReportSans", "", 7)
     pdf.set_text_color(140, 145, 160)
@@ -490,7 +489,7 @@ def generate_budget_pdf(
     pdf.set_y(44)
     pdf.set_font("ReportSans", "B", 10.5)
     pdf.set_text_color(20, 24, 38)
-    pdf.cell(267, 7, "1. СВОДНАЯ ПОТРЕБНОСТЬ В ФИНАНСИРОВАНИИ ПО АГРЕГАТАМ", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(267, 7, "1. СВОДНЫЙ ПЛАН РЕГЛАМЕНТНЫХ РАБОТ И КОМПЛЕКТАЦИИ ЗИП", new_x="LMARGIN", new_y="NEXT")
     pdf.set_draw_color(75, 59, 255)
     pdf.line(15, pdf.get_y(), 60, pdf.get_y())
     pdf.set_draw_color(220, 224, 232)
@@ -503,44 +502,32 @@ def generate_budget_pdf(
         "Вид ТО",
         "Срок ТО",
         "Статус",
-        "ТМЦ к закупке (₽)",
-        "Работы (₽)",
-        "Требуется в бюджет (₽)",
+        "Дефицит ЗИП / ТМЦ",
+        "Ответственная служба",
     ]
 
-    total_materials = 0.0
-    total_service = 0.0
-    total_budget = 0.0
-
+    total_deficit_positions = 0
     table_data_rows: list[list[str]] = []
 
     for rec in records:
         eval_data = notifications.evaluate_equipment(rec)
         for task in eval_data["tasks"]:
-            b = task["budget"]
-            # Включаем задачи, у которых есть потребность в бюджете или срок <= 30 дней
-            if task["days_left"] <= config.BUDGET_ALERT_HORIZON_DAYS or b["budget_required_rub"] > 0:
-                mat_cost = b["materials_to_buy_rub"]
-                svc_cost = b["service_cost_rub"]
-                req_budget = b["budget_required_rub"]
-
-                total_materials += mat_cost
-                total_service += svc_cost
-                total_budget += req_budget
-
+            def_count = task.get("deficit_items_count", 0)
+            if task["days_left"] <= config.BUDGET_ALERT_HORIZON_DAYS or def_count > 0:
+                total_deficit_positions += def_count
+                def_str = f"{def_count} поз. к поставке" if def_count > 0 else "ЗИП в наличии (100%)"
                 table_data_rows.append([
                     rec.name,
                     rec.inventory_number,
-                    f"{task['task_code']}: {task['task_title'][:30]}",
+                    f"{task['task_code']}: {task['task_title'][:32]}",
                     task["next_due_date"],
                     task["urgency_label"],
-                    f"{int(mat_cost):,} ₽".replace(",", " "),
-                    f"{int(svc_cost):,} ₽".replace(",", " "),
-                    f"{int(req_budget):,} ₽".replace(",", " "),
+                    def_str,
+                    task["responsible"] or "Служба эксплуатации",
                 ])
 
     if table_data_rows:
-        with pdf.table(col_widths=(55, 24, 60, 26, 38, 30, 26, 38), text_align=("LEFT", "CENTER", "LEFT", "CENTER", "CENTER", "RIGHT", "RIGHT", "RIGHT"), line_height=5.2) as table:
+        with pdf.table(col_widths=(55, 25, 65, 26, 34, 34, 28), text_align=("LEFT", "CENTER", "LEFT", "CENTER", "CENTER", "CENTER", "LEFT"), line_height=5.2) as table:
             head_row = table.row()
             for h in summary_headers:
                 head_row.cell(h)
@@ -551,16 +538,13 @@ def generate_budget_pdf(
 
         pdf.ln(3)
         pdf.set_fill_color(240, 243, 248)
-        pdf.set_font("ReportSans", "B", 10)
+        pdf.set_font("ReportSans", "B", 9.5)
         pdf.set_text_color(20, 24, 38)
-        pdf.cell(173, 7, "ИТОГО ПО ЗАЯВКЕ:", border=1, align="R", fill=True)
-        pdf.cell(30, 7, _format_rub(total_materials), border=1, align="R", fill=True)
-        pdf.cell(26, 7, _format_rub(total_service), border=1, align="R", fill=True)
-        pdf.cell(38, 7, _format_rub(total_budget), border=1, align="R", fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(267, 7, f"ИТОГО НА КОНТРОЛЕ: {len(table_data_rows)} заданий ТО · Позиций ЗИП в дефиците к поставке: {total_deficit_positions} поз.", border=1, align="L", fill=True, new_x="LMARGIN", new_y="NEXT")
     else:
         pdf.set_font("ReportSans", "", 9)
         pdf.set_text_color(16, 185, 129)
-        pdf.cell(267, 7, "В ближайшие 30 суток потребности в дополнительном бюджете на ТО не выявлено.", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(267, 7, "В ближайшие 30 суток все агрегаты находятся в графике, дефицита ЗИП не выявлено.", new_x="LMARGIN", new_y="NEXT")
 
-    pdf.draw_signatures("Главный механик", "Финансово-экономический отдел")
+    pdf.draw_signatures("Главный механик", "Начальник ЛПУ / ГРС / КС")
     return bytes(pdf.output())

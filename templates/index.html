@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Узел документации и ТО — Mind Equip</title>
-  <meta name="description" content="Локальный узел документации, паспортизации и контроля ТО оборудования по QR-коду (TLS 5810)">
+  <title>Интергаз Центральная Азия — Узел документации и ТО (ЛПУ, ГРС, КС)</title>
+  <meta name="description" content="АО «Интергаз Центральная Азия» — локальная система документации, паспортизации и контроля ТО оборудования ЛПУ, ГРС и КС по QR-коду (TLS 8443, Keycloak, защищённые QR)">
   <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
@@ -14,17 +14,35 @@
     <header class="top-bar">
       <div class="top-bar-inner">
         <div class="brand-section">
-          <div class="mind-badge" aria-label="Mind Ecosystem">
-            <span class="mind-badge-glyph">M</span>
+          <div class="mind-badge" aria-label="Интергаз Центральная Азия" style="width: 28px; height: 28px;">
+            <span class="mind-badge-glyph" style="font-size: 11px; letter-spacing: 0;">ICA</span>
           </div>
-          <h1 class="node-title">Узел документации и ТО</h1>
+          <h1 class="node-title">Интергаз Центральная Азия · ЛПУ / ГРС / КС</h1>
         </div>
         
         <div class="node-meta">
-          <div class="tls-badge" title="Защищённый автономный TLS-узел (порт 5810)">
+          <div class="tls-badge" title="Защищённый автономный TLS-узел (порт 8443)">
             <span class="cyan-dot" aria-hidden="true"></span>
-            <span>TLS · 5810</span>
+            <span>TLS · 8443</span>
           </div>
+
+          <!-- Keycloak User Authentication Badge -->
+          <div class="user-auth-wrap">
+            {% if current_user %}
+            <div class="user-pill" title="Keycloak Realm: mind-equip ({{ current_user.email }})">
+              <span class="user-avatar-glyph">👤</span>
+              <span class="user-name">{{ current_user.name }}</span>
+              <span class="role-tag {{ current_user.role_label }}">{{ current_user.role_label }}</span>
+              <a href="/auth/logout" class="btn-logout" title="Выйти из системы">Выйти</a>
+            </div>
+            {% else %}
+            <a href="/auth/login" class="btn-login" id="btn-top-login" title="Войти в систему через Keycloak">
+              <span class="cyan-dot" aria-hidden="true"></span>
+              <span>Войти</span>
+            </a>
+            {% endif %}
+          </div>
+
           <a href="#tab-budget" class="alert-counter-badge empty" id="top-alert-badge" title="Требуется внимание по плановому ТО">
             <span aria-hidden="true">⚠</span>
             <span id="top-alert-count">0</span> ТО
@@ -40,11 +58,11 @@
       <div class="panel" id="network-info-panel" style="display: none; padding: 10px 14px; margin-bottom: 12px; font-size: 13px;">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
           <span style="color: var(--text-secondary);">Адрес для смартфона в Wi-Fi:</span>
-          <span class="mono" id="network-host-url" style="color: var(--accent-cyan); font-weight: 600;">https://0.0.0.0:5810</span>
+          <span class="mono" id="network-host-url" style="color: var(--accent-cyan); font-weight: 600;">https://0.0.0.0:8443</span>
         </div>
       </div>
 
-      <!-- Operational Maintenance & Budget Alert Banner (Auto-populated from /api/overview) -->
+      <!-- Operational Maintenance Alert Banner (Auto-populated from /api/overview) -->
       <div class="alert-banner" id="overview-alert-banner" style="display: none;">
         <div class="alert-banner-top">
           <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -55,19 +73,19 @@
           <div class="alert-content">
             <div class="alert-headline" id="overview-alert-headline">Требуется внимание по ТО</div>
             <div class="alert-details" id="overview-alert-details">
-              Необходимо предусмотреть в бюджете <span class="alert-sum-highlight" id="overview-alert-sum">0 ₽</span> на материалы и работы.
+              Приближаются сроки регламентных работ. Проверьте график и наличие запасных частей (ЗИП).
             </div>
           </div>
         </div>
         <div class="alert-actions">
-          <button type="button" class="btn btn-warn btn-sm" id="btn-goto-budget">План ТО и бюджет</button>
+          <button type="button" class="btn btn-warn btn-sm" id="btn-goto-budget">План ТО и ЗИП</button>
           <a href="/api/budget-report.pdf" class="btn btn-secondary btn-sm" id="btn-download-overview-pdf" target="_blank" download>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            Скачать заявку в бюджет (PDF)
+            Скачать сводный план ТО и ЗИП (PDF)
           </a>
         </div>
       </div>
@@ -81,7 +99,7 @@
           Оборудование
         </button>
         <button type="button" class="segmented-item" role="tab" aria-selected="false" id="tab-btn-budget" data-target="view-budget">
-          ТО и бюджет
+          План ТО и ЗИП
           <span class="seg-badge" id="tab-badge-budget" style="display: none;">0</span>
         </button>
       </nav>
@@ -127,18 +145,27 @@
             <!-- Recognition Result Box (Shown upon QR decode) -->
             <div class="qr-result-box" id="qr-result-box">
               <div class="qr-result-header">
-                <span class="qr-result-label">
+                <span class="qr-result-label" id="qr-result-label">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
-                  QR-код успешно распознан
+                  Распознан QR-код
                 </span>
                 <span class="mono" style="font-size: 11px; color: var(--text-muted);" id="qr-timestamp">только что</span>
               </div>
-              <div class="qr-result-raw" id="qr-result-text"></div>
+
+              <!-- Structured Verification Card -->
+              <div class="qr-verified-card" id="qr-verified-card" style="display: none;">
+                <div class="qr-verified-status" id="qr-verified-status"></div>
+                <div class="qr-verified-name" id="qr-verified-name"></div>
+                <div class="qr-verified-inv" id="qr-verified-inv"></div>
+              </div>
+
+              <div class="qr-result-raw mono" id="qr-result-text"></div>
+              
               <div class="qr-result-actions">
                 <a href="#" class="btn btn-primary" id="qr-go-link">
-                  Перейти по ссылке
+                  Перейти к оборудованию
                 </a>
                 <button type="button" class="btn btn-secondary" id="btn-rescan">
                   Сканировать повторно
@@ -204,33 +231,33 @@
         </div>
       </section>
 
-      <!-- View 3: Maintenance & Budget Plan -->
+      <!-- View 3: Maintenance & Spare Parts (ZIP) Plan -->
       <section class="tab-view" id="view-budget" role="tabpanel" aria-labelledby="tab-btn-budget" style="display: none;">
         
         <!-- Summary Metric Cards -->
         <div class="budget-summary-grid">
           <div class="metric-panel">
             <div class="metric-label">Оборудование на контроле ТО</div>
-            <div class="metric-value" id="metric-due-count">0</div>
+            <div class="metric-value mono" id="metric-due-count">0</div>
           </div>
           <div class="metric-panel">
-            <div class="metric-label">Закупка материалов и ЗИП</div>
-            <div class="metric-value mono" id="metric-materials-sum">0 ₽</div>
+            <div class="metric-label">Срочных / просроченных ТО</div>
+            <div class="metric-value mono alert-urgent" id="metric-overdue-count">0</div>
           </div>
           <div class="metric-panel">
-            <div class="metric-label">Сервисные работы и дефекты</div>
-            <div class="metric-value mono" id="metric-services-sum">0 ₽</div>
+            <div class="metric-label">Номенклатур ЗИП в дефиците</div>
+            <div class="metric-value mono" id="metric-materials-deficit">0</div>
           </div>
           <div class="metric-panel highlighted">
-            <div class="metric-label">Итого потребность в бюджете</div>
-            <div class="metric-value mono" id="metric-total-sum">0 ₽</div>
+            <div class="metric-label">Открытых дефектов</div>
+            <div class="metric-value mono" id="metric-defects-count">0</div>
           </div>
         </div>
 
         <div class="panel">
           <div class="panel-header">
             <div class="panel-title">
-              График ТО и бюджетные заявки
+              Сводный график регламентных работ и ЗИП
             </div>
             <a href="/api/budget-report.pdf" class="btn btn-primary btn-sm" target="_blank" download>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -238,7 +265,7 @@
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              Скачать сводную заявку (PDF)
+              Скачать сводный план ТО и ЗИП (PDF)
             </a>
           </div>
 

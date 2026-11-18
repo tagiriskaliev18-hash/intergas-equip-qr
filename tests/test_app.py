@@ -384,18 +384,20 @@ def test_maintenance_schedule_and_budget_notifications(client) -> None:
             ):
                 all_notifs.extend(val)
 
-    # Find the notification for our equipment or budget calculation
+    # Find the notification for our equipment or maintenance calculation
     matching_notif = next(
-        (n for n in all_notifs if n.get("equipment_id") == eq_id or float(n.get("budget_required_rub", 0)) == 15500.0),
+        (n for n in all_notifs if n.get("equipment_id") == eq_id),
         None,
     )
-    assert matching_notif is not None, f"Budget notification not found in overview: {overview_data}"
+    assert matching_notif is not None, f"Maintenance notification not found in overview: {overview_data}"
     assert matching_notif.get("urgency") == "soon", (
         f"Expected urgency 'soon' (10 days due), got: {matching_notif.get('urgency')}"
     )
-    assert float(matching_notif.get("budget_required_rub", 0)) == 15500.0, (
-        f"Expected budget_required_rub == 15500.0, got: {matching_notif.get('budget_required_rub')}"
-    )
+    msg = matching_notif.get("message", "")
+    assert "ТО-1" in msg, f"Expected task code 'ТО-1' in message: {msg}"
+    # Technical focus: no monetary sums in operational notifications
+    assert "₸" not in msg, f"Message must NOT contain money sums or '₸': {msg}"
+    assert "₽" not in msg, f"Message must NOT contain money sums or '₽': {msg}"
 
     # Complete the maintenance task
     complete_payload = {
@@ -536,3 +538,210 @@ def test_defects_and_defect_sheet_pdf_generation(client) -> None:
     assert qr_resp.status_code == 200, f"QR code endpoint failed: {qr_resp.status_code}"
     assert "image/png" in qr_resp.headers.get("content-type", "")
     assert qr_resp.content.startswith(b"\x89PNG"), "QR code endpoint did not return valid PNG data"
+
+
+# ---------------------------------------------------------------------------
+# 9. Keycloak Authentication & Session Cookie Tests
+# ---------------------------------------------------------------------------
+
+def test_keycloak_direct_auth_and_session(client) -> None:
+    """
+    Verifies Keycloak-integrated authentication flows:
+    - /auth/login returns 200 with Mind branded login options.
+    - POST /auth/direct-login with invalid credentials fails with 401.
+    - POST /auth/direct-login with 'admin' / 'admin123' succeeds, issues session cookie.
+    - GET /api/auth/me returns user profile with roles and admin rights.
+    - GET /auth/logout clears cookie and resets session.
+    """
+    # 1. Login page check
+    login_page = client.get("/auth/login")
+    assert login_page.status_code == 200
+    assert "Keycloak" in login_page.text
+
+    # 2. Invalid password
+    bad_login = client.post("/auth/direct-login", data={
+        "username": "admin",
+        "password": "wrong-password",
+    })
+    assert bad_login.status_code == 401
+
+    # 3. Successful admin login
+    ok_login = client.post("/auth/direct-login", data={
+        "username": "admin",
+        "password": "admin123",
+    }, follow_redirects=False)
+    assert ok_login.status_code in (302, 303)
+    assert "mind_session" in ok_login.cookies
+    admin_token = ok_login.cookies["mind_session"]
+
+    # 4. Check /api/auth/me using authenticated session cookie
+    me_resp = client.get("/api/auth/me", headers={"Cookie": f"mind_session={admin_token}"})
+    assert me_resp.status_code == 200
+    me_data = me_resp.json()
+    assert me_data.get("authenticated") is True
+    user = me_data.get("user", {})
+    assert user.get("username") == "admin"
+    assert user.get("is_admin") is True
+    assert "admin" in user.get("roles", [])
+
+    # Also verify Bearer header works identically
+    bearer_resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {admin_token}"})
+    assert bearer_resp.status_code == 200
+    assert bearer_resp.json().get("authenticated") is True
+
+    # 5. Logout clears session
+    logout_resp = client.get("/auth/logout", follow_redirects=False)
+    assert logout_resp.status_code in (302, 303)
+    
+    # 6. Check unauthenticated me
+    unauth_resp = client.get("/api/auth/me")
+    assert unauth_resp.status_code == 200
+    assert unauth_resp.json().get("authenticated") is False
+
+
+# ---------------------------------------------------------------------------
+# 10. Proprietary Secure QR Code Generation & Verification
+# ---------------------------------------------------------------------------
+
+def test_secure_closed_qr_lifecycle_and_verification(client) -> None:
+    """
+    Verifies that proprietary closed QR codes:
+    - Are generated via GET /api/equipment/{id}/secure-qr with PNG format and Mind styling.
+    - The payload MINDEQUIP:v2:<id>:<token> is NOT a navigable browser URL,
+      preventing stock phone cameras from opening it directly.
+    - POST /api/verify-qr-token validates the token against the cryptographic store.
+    - Tampered or forged tokens are strictly rejected.
+    """
+    import app.security_qr as sec_qr
+
+    # 1. Create equipment
+    eq_resp = client.post("/api/equipment", json={
+        "name": "Трансформатор силовой ТМГ-1000",
+        "inventory_number": "ТР-1000",
+        "location": "Подстанция 110/10 кВ",
+    })
+    assert eq_resp.status_code == 201
+    eq_id = eq_resp.json()["id"]
+
+    # 2. Get secure QR PNG
+    png_resp = client.get(f"/api/equipment/{eq_id}/secure-qr")
+    assert png_resp.status_code == 200
+    assert png_resp.headers.get("content-type") == "image/png"
+    assert png_resp.content.startswith(b"\x89PNG")
+
+    # 3. Generate valid payload
+    valid_payload = sec_qr.generate_secure_qr_payload(eq_id)
+    assert valid_payload.startswith("MINDEQUIP:v2:")
+    assert eq_id in valid_payload
+
+    # 4. Verify valid payload
+    verify_resp = client.post("/api/verify-qr-token", json={"token": valid_payload})
+    assert verify_resp.status_code == 200
+    v_data = verify_resp.json()
+    assert v_data.get("is_secure_qr") is True
+    assert v_data.get("valid") is True
+    assert v_data.get("equipment_id") == eq_id
+    assert v_data.get("card_url") == f"/doc/{eq_id}"
+
+    # 5. Verify tampered payload fails
+    tampered_payload = f"MINDEQUIP:v2:{eq_id}:FAKEKEY12345678"
+    fake_resp = client.post("/api/verify-qr-token", json={"token": tampered_payload})
+    assert fake_resp.status_code == 200
+    f_data = fake_resp.json()
+    assert f_data.get("is_secure_qr") is True
+    assert f_data.get("valid") is False
+    assert "Токен QR-кода устарел или был перевыпущен" in f_data.get("error", "")
+
+    # 6. Verify plain standard link fallback
+    standard_resp = client.post("/api/verify-qr-token", json={"token": f"https://0.0.0.0:8443/doc/{eq_id}"})
+    assert standard_resp.status_code == 200
+    s_data = standard_resp.json()
+    assert s_data.get("valid") is True
+    assert s_data.get("is_secure_qr") is False
+    assert s_data.get("equipment_id") == eq_id
+
+
+# ---------------------------------------------------------------------------
+# 11. QR Token Rotation & Role-Based Access
+# ---------------------------------------------------------------------------
+
+def test_qr_token_rotation_and_role_access(client) -> None:
+    """
+    Verifies token rotation security:
+    - Operator cannot rotate token (403 Forbidden).
+    - Engineer or Admin can rotate token.
+    - Rotating token invalidates old QR payload and validates new payload.
+    """
+    import app.security_qr as sec_qr
+
+    eq_resp = client.post("/api/equipment", json={
+        "name": "Компрессор винтовой КВ-12",
+        "inventory_number": "КВ-12",
+        "location": "Компрессорная",
+    })
+    eq_id = eq_resp.json()["id"]
+
+    old_payload = sec_qr.generate_secure_qr_payload(eq_id)
+
+    # 1. Login as operator
+    op_login = client.post("/auth/direct-login", data={
+        "username": "operator",
+        "password": "operator123",
+    }, follow_redirects=False)
+    assert op_login.status_code in (302, 303)
+    op_token = op_login.cookies.get("mind_session")
+    assert op_token
+
+    # Operator rotation attempt must be rejected (403 Forbidden)
+    denied = client.post(
+        f"/api/equipment/{eq_id}/rotate-qr",
+        headers={"Authorization": f"Bearer {op_token}"},
+    )
+    assert denied.status_code == 403, f"Expected 403 Forbidden for operator, got: {denied.status_code}"
+
+    # Unauthenticated rotation attempt must also be rejected (403 Forbidden)
+    anon_denied = client.post(f"/api/equipment/{eq_id}/rotate-qr")
+    assert anon_denied.status_code == 403
+
+    # 2. Login as engineer
+    eng_login = client.post("/auth/direct-login", data={
+        "username": "engineer",
+        "password": "engineer123",
+    }, follow_redirects=False)
+    assert eng_login.status_code in (302, 303)
+    eng_token = eng_login.cookies.get("mind_session")
+    assert eng_token
+
+    # Engineer rotation succeeds
+    rotate_resp = client.post(
+        f"/api/equipment/{eq_id}/rotate-qr",
+        headers={"Authorization": f"Bearer {eng_token}"},
+    )
+    assert rotate_resp.status_code == 200, f"Rotation failed: {rotate_resp.text}"
+    new_token = rotate_resp.json().get("token")
+    assert new_token
+
+    # 3. Old payload is now invalidated
+    old_verify = client.post("/api/verify-qr-token", json={"token": old_payload})
+    assert old_verify.json().get("valid") is False
+
+    # 4. New payload is valid
+    new_payload = sec_qr.generate_secure_qr_payload(eq_id)
+    new_verify = client.post("/api/verify-qr-token", json={"token": new_payload})
+    assert new_verify.json().get("valid") is True
+
+
+# ---------------------------------------------------------------------------
+# 12. Network Information & Custom Port (8443)
+# ---------------------------------------------------------------------------
+
+def test_network_info_port_8443(client) -> None:
+    """
+    Verifies /api/network-info returns the updated port 8443 and local interfaces.
+    """
+    resp = client.get("/api/network-info")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("port") == 8443
+    assert ":8443" in data.get("primary_url", "")
+    assert isinstance(data.get("interfaces"), list)

@@ -1,0 +1,332 @@
+{
+  "equipment": [
+    {
+      "id": "ks-gpa-16-ural",
+      "name": "Газоперекачивающий агрегат ГПА-Ц-16Л (привод ГТУ-16П, нагнетатель Н-235)",
+      "inventory_number": "КС-ГПА-16-04",
+      "model": "ГПА-Ц-16Л/ГТУ-16П",
+      "serial_number": "GPA-16L-4821",
+      "manufacturer": "ПАО «Сумское НПО» / АО «ОДК-Авиадвигатель»",
+      "commission_year": 2019,
+      "location": "КС-4 «Тараз» · Таразское ЛПУМГ · Компрессорный цех №1",
+      "status": "good",
+      "maintenance_tasks": [
+        {
+          "id": "task-to-2",
+          "code": "ТО-2",
+          "title": "Регламентное техническое обслуживание ТО-2 ГПА (2000 моточасов)",
+          "interval_days": 90,
+          "last_completed_date": "2026-08-28",
+          "next_due_date": "2026-11-26",
+          "responsible": "Служба эксплуатации КС Таразского ЛПУМГ",
+          "service_cost_rub": 450000.0,
+          "materials": [
+            {
+              "name": "Масло турбинное Тп-22С (ГОСТ 9972-74)",
+              "sku": "OIL-TP-22S",
+              "unit": "л",
+              "qty_required": 80.0,
+              "qty_in_stock": 10.0,
+              "unit_price_rub": 2800.0,
+              "id": "mat-310a73"
+            },
+            {
+              "name": "Фильтроэлемент коалесцирующий очистки топливного газа ФГ-16",
+              "sku": "FLT-FG-16C",
+              "unit": "шт.",
+              "qty_required": 4.0,
+              "qty_in_stock": 0.0,
+              "unit_price_rub": 68000.0,
+              "id": "mat-ed9740"
+            },
+            {
+              "name": "Ремкомплект уплотнительных элементов СГУ (John Crane)",
+              "sku": "KIT-SGU-235",
+              "unit": "компл.",
+              "qty_required": 1.0,
+              "qty_in_stock": 0.0,
+              "unit_price_rub": 180000.0,
+              "id": "mat-709296"
+            },
+            {
+              "name": "Фильтроэлемент напорный тонкой очистки турбомасла",
+              "sku": "FLT-OIL-GTU16",
+              "unit": "шт.",
+              "qty_required": 2.0,
+              "qty_in_stock": 0.0,
+              "unit_price_rub": 36000.0,
+              "id": "mat-5192c3"
+            }
+          ],
+          "notes": "Ревизия маслосистемы, замена фильтрующих элементов топливного газа, проверка системы пожаротушения и загазованности"
+        }
+      ],
+      "maintenance_history": [],
+      "defects": [],
+      "photos": [
+        {
+          "id": "photo-3310476e",
+          "filename": "20261118_161309_2edafc.jpg",
+          "created_at": "2026-11-18 16:13",
+          "condition": "good",
+          "node": "Газовый нагнетатель и турбоблок",
+          "comment": "Осмотр технологического блока ГПА-Ц-16Л. Протечек масла и утечек газа по фланцам не обнаружено. Параметры в норме.",
+          "url": "documents/ks-gpa-16-ural/photos/20261118_161309_2edafc.jpg",
+          "size_human": "41.6 КБ"
+        }
+      ]
+    },
+    {
+      "id": "grs-uzel-red-tartarini",
+      "name": "Технологический узел редуцирования давления газа ГРС (регуляторы Tartarini FL-BP / MBN)",
+      "inventory_number": "ГРС-УР-0219",
+      "model": "Tartarini FL-BP DN100 / ANSI 600",
+      "serial_number": "TART-FL-100-9844",
+      "manufacturer": "Emerson Process Management / Tartarini",
+      "commission_year": 2020,
+      "location": "ГРС-1 «Шымкент» · Шымкентское ЛПУМГ · Блок редуцирования",
+      "status": "attention",
+      "maintenance_tasks": [
+        {
+          "id": "task-to-1",
+          "code": "ТО-1",
+          "title": "Ежемесячное ТО и ревизия пилотных клапанов узла редуцирования",
+          "interval_days": 30,
+          "last_completed_date": "2026-10-17",
+          "next_due_date": "2026-11-16",
+          "responsible": "Служба ГРС Шымкентского ЛПУМГ",
+          "service_cost_rub": 85000.0,
+          "materials": [
+            {
+              "name": "Комплект мембран и седел Tartarini FL DN100",
+              "sku": "KIT-TART-FL100",
+              "unit": "компл.",
+              "qty_required": 2.0,
+              "qty_in_stock": 0.0,
+              "unit_price_rub": 65000.0,
+              "id": "mat-2719b7"
+            },
+            {
+              "name": "Фильтроэлемент газового фильтра-сепаратора ФС-100",
+              "sku": "FLT-FS-100",
+              "unit": "шт.",
+              "qty_required": 1.0,
+              "qty_in_stock": 0.0,
+              "unit_price_rub": 48000.0,
+              "id": "mat-0ee415"
+            }
+          ],
+          "notes": "Проверка уставки срабатывания ПЗК, контроль перепада давления на фильтрах-сепараторах, ревизия импульсных линий"
+        }
+      ],
+      "maintenance_history": [],
+      "defects": [
+        {
+          "node": "Пилотный регулятор управления Tartarini PRX/182",
+          "description": "Нестабильность уставки выходного давления при переменных расходах (пропуск по седлу пилота до 0.05 МПа выше нормы)",
+          "severity": "high",
+          "recommended_action": "Замена седла и дроссельного элемента пилотного клапана с калибровкой пружины уставки",
+          "estimated_cost_rub": 135000.0,
+          "photo_filename": null,
+          "id": "def-46058a5b",
+          "created_at": "2026-11-18 16:13",
+          "status": "open"
+        }
+      ],
+      "photos": [
+        {
+          "id": "photo-42a9c683",
+          "filename": "20261118_161309_46c881.jpg",
+          "created_at": "2026-11-18 16:13",
+          "condition": "attention",
+          "node": "Пилотный регулятор давления",
+          "comment": "Фиксация отклонения выходного давления при малых расходах газа. Требуется ревизия седла пилота PRX/182.",
+          "url": "documents/grs-uzel-red-tartarini/photos/20261118_161309_46c881.jpg",
+          "size_human": "42.0 КБ"
+        }
+      ]
+    },
+    {
+      "id": "lpu-kran-dn1000",
+      "name": "Кран шаровой магистральный DN1000 PN80 с пневмогидроприводом (ПГП)",
+      "inventory_number": "ЛПУ-КШ-0412",
+      "model": "КШ.1000.080.ПГП (с автоматом аварийного закрытия ААЗК)",
+      "serial_number": "KSH-1000-80-0412",
+      "manufacturer": "АО «Тяжпромарматура» / Böhmer Armaturen",
+      "commission_year": 2018,
+      "location": "МГ «Бухара — Урал» · 428 км · Линейная часть Актюбинского ЛПУМГ",
+      "status": "good",
+      "maintenance_tasks": [
+        {
+          "id": "task-to-1",
+          "code": "ТО-1",
+          "title": "Сезонное техническое обслуживание линейной запорной арматуры и узла ПГП",
+          "interval_days": 60,
+          "last_completed_date": "2026-10-24",
+          "next_due_date": "2026-12-23",
+          "responsible": "Линейно-эксплуатационная служба (ЛЭС) Актюбинского ЛПУМГ",
+          "service_cost_rub": 120000.0,
+          "materials": [
+            {
+              "name": "Смазка уплотнительная синтетическая Арматол-238 (для шаровых пробок)",
+              "sku": "LUB-ARM-238",
+              "unit": "кг",
+              "qty_required": 10.0,
+              "qty_in_stock": 15.0,
+              "unit_price_rub": 8500.0,
+              "id": "mat-bd778d"
+            },
+            {
+              "name": "Гидравлическое масло для привода ПГП (низкотемпературное ВМГЗ)",
+              "sku": "OIL-VMGZ-20",
+              "unit": "л",
+              "qty_required": 20.0,
+              "qty_in_stock": 20.0,
+              "unit_price_rub": 3400.0,
+              "id": "mat-a35bc8"
+            }
+          ],
+          "notes": "Набивка уплотнительной пасты в седла крана, проверка уровня масла в гидробаках ПГП, контроль состояния дренажных линий"
+        }
+      ],
+      "maintenance_history": [],
+      "defects": [],
+      "photos": [
+        {
+          "id": "photo-f733a624",
+          "filename": "20261118_161310_57d1da.jpg",
+          "created_at": "2026-11-18 16:13",
+          "condition": "good",
+          "node": "Узел перекрытия и пневмогидропривод",
+          "comment": "Плановый осмотр кранового узла на 428 км МГ «Бухара — Урал». Подтеков гидрожидкости нет, положение затвора — «Открыто».",
+          "url": "documents/lpu-kran-dn1000/photos/20261118_161310_57d1da.jpg",
+          "size_human": "42.2 КБ"
+        }
+      ]
+    }
+  ],
+  "documents": {
+    "ks-gpa-16-ural": {
+      "passport": [
+        {
+          "filename": "passport_gpa_c_16l.pdf",
+          "category": "passport",
+          "category_title": "Паспорт оборудования",
+          "size_bytes": 60046,
+          "size_human": "58.6 КБ",
+          "modified_at": "2026-11-18 16:13",
+          "download_url": "documents/ks-gpa-16-ural/passport/passport_gpa_c_16l.pdf",
+          "view_url": "/files/ks-gpa-16-ural/passport/passport_gpa_c_16l.pdf?inline=1"
+        }
+      ],
+      "diagnostics": [
+        {
+          "filename": "diagnostics_vibration_gpa16.pdf",
+          "category": "diagnostics",
+          "category_title": "Документы диагностики",
+          "size_bytes": 59979,
+          "size_human": "58.6 КБ",
+          "modified_at": "2026-11-18 16:13",
+          "download_url": "documents/ks-gpa-16-ural/diagnostics/diagnostics_vibration_gpa16.pdf",
+          "view_url": "/files/ks-gpa-16-ural/diagnostics/diagnostics_vibration_gpa16.pdf?inline=1"
+        }
+      ],
+      "schedule": [
+        {
+          "filename": "schedule_to2_gpa16.pdf",
+          "category": "schedule",
+          "category_title": "Графики и регламенты ТО",
+          "size_bytes": 60049,
+          "size_human": "58.6 КБ",
+          "modified_at": "2026-11-18 16:13",
+          "download_url": "documents/ks-gpa-16-ural/schedule/schedule_to2_gpa16.pdf",
+          "view_url": "/files/ks-gpa-16-ural/schedule/schedule_to2_gpa16.pdf?inline=1"
+        }
+      ],
+      "defects": []
+    },
+    "grs-uzel-red-tartarini": {
+      "passport": [
+        {
+          "filename": "passport_tartarini_grs.pdf",
+          "category": "passport",
+          "category_title": "Паспорт оборудования",
+          "size_bytes": 63732,
+          "size_human": "62.2 КБ",
+          "modified_at": "2026-11-18 16:13",
+          "download_url": "documents/grs-uzel-red-tartarini/passport/passport_tartarini_grs.pdf",
+          "view_url": "/files/grs-uzel-red-tartarini/passport/passport_tartarini_grs.pdf?inline=1"
+        }
+      ],
+      "diagnostics": [],
+      "schedule": [
+        {
+          "filename": "schedule_to1_grs.pdf",
+          "category": "schedule",
+          "category_title": "Графики и регламенты ТО",
+          "size_bytes": 57744,
+          "size_human": "56.4 КБ",
+          "modified_at": "2026-11-18 16:13",
+          "download_url": "documents/grs-uzel-red-tartarini/schedule/schedule_to1_grs.pdf",
+          "view_url": "/files/grs-uzel-red-tartarini/schedule/schedule_to1_grs.pdf?inline=1"
+        }
+      ],
+      "defects": [
+        {
+          "filename": "defect_sheet_grs_tartarini.pdf",
+          "category": "defects",
+          "category_title": "Дефектные ведомости",
+          "size_bytes": 56398,
+          "size_human": "55.1 КБ",
+          "modified_at": "2026-11-18 16:13",
+          "download_url": "documents/grs-uzel-red-tartarini/defects/defect_sheet_grs_tartarini.pdf",
+          "view_url": "/files/grs-uzel-red-tartarini/defects/defect_sheet_grs_tartarini.pdf?inline=1"
+        }
+      ]
+    },
+    "lpu-kran-dn1000": {
+      "passport": [
+        {
+          "filename": "passport_kran_dn1000_pgp.pdf",
+          "category": "passport",
+          "category_title": "Паспорт оборудования",
+          "size_bytes": 61074,
+          "size_human": "59.6 КБ",
+          "modified_at": "2026-11-18 16:13",
+          "download_url": "documents/lpu-kran-dn1000/passport/passport_kran_dn1000_pgp.pdf",
+          "view_url": "/files/lpu-kran-dn1000/passport/passport_kran_dn1000_pgp.pdf?inline=1"
+        }
+      ],
+      "diagnostics": [
+        {
+          "filename": "diagnostics_kran_aazk.pdf",
+          "category": "diagnostics",
+          "category_title": "Документы диагностики",
+          "size_bytes": 57847,
+          "size_human": "56.5 КБ",
+          "modified_at": "2026-11-18 16:13",
+          "download_url": "documents/lpu-kran-dn1000/diagnostics/diagnostics_kran_aazk.pdf",
+          "view_url": "/files/lpu-kran-dn1000/diagnostics/diagnostics_kran_aazk.pdf?inline=1"
+        }
+      ],
+      "schedule": [
+        {
+          "filename": "schedule_to1_kran.pdf",
+          "category": "schedule",
+          "category_title": "Графики и регламенты ТО",
+          "size_bytes": 58311,
+          "size_human": "56.9 КБ",
+          "modified_at": "2026-11-18 16:13",
+          "download_url": "documents/lpu-kran-dn1000/schedule/schedule_to1_kran.pdf",
+          "view_url": "/files/lpu-kran-dn1000/schedule/schedule_to1_kran.pdf?inline=1"
+        }
+      ],
+      "defects": []
+    }
+  },
+  "qr_tokens": {
+    "ks-gpa-16-ural": "7132F802398247CA",
+    "grs-uzel-red-tartarini": "98AC989C820C4ACF",
+    "lpu-kran-dn1000": "2BFB4D48D54D167F"
+  }
+}

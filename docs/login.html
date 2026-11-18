@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Вход в систему — Интергаз Центральная Азия · Keycloak</title>
+  <link rel="stylesheet" href="static/css/styles.css">
+  <style>
+    .login-wrapper {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background-color: var(--bg);
+    }
+    .login-card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--panel);
+      border: 1px solid var(--hairline-hover);
+      border-radius: var(--radius-lg);
+      padding: 28px 24px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    }
+    .login-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      justify-content: center;
+    }
+    .login-title {
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    .login-desc {
+      font-size: 13.5px;
+      color: var(--text-secondary);
+      text-align: center;
+      margin-bottom: 22px;
+      line-height: 1.45;
+    }
+    .login-error-badge {
+      display: none;
+      background: var(--state-crit-bg);
+      border: 1px solid var(--state-crit-border);
+      color: var(--state-crit);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-size: 13.5px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    .divider-or {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+      margin: 20px 0;
+    }
+    .divider-or::before, .divider-or::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--hairline);
+    }
+    .quick-account-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--panel-sub);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 13.5px;
+      margin-bottom: 8px;
+      text-align: left;
+      cursor: pointer;
+      transition: background-color var(--transition-fast), border-color var(--transition-fast);
+    }
+    .quick-account-btn:hover {
+      background: var(--panel-elevated);
+      border-color: var(--hairline-hover);
+    }
+  </style>
+</head>
+<body>
+  <div class="login-wrapper">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="mind-badge" style="width: 32px; height: 32px;">
+          <span class="mind-badge-glyph" style="font-size: 13px; letter-spacing: 0;">ICA</span>
+        </div>
+        <div class="tls-badge">
+          <span class="cyan-dot"></span>
+          <span>Интергаз · Keycloak · HTTPS</span>
+        </div>
+      </div>
+
+      <h1 class="login-title">Интергаз Центральная Азия</h1>
+      <p class="login-desc">Единая база документации, паспортизации и ТО оборудования ЛПУ, ГРС и КС по защищённым QR-кодам.</p>
+
+      <div class="login-error-badge" id="login-error"></div>
+
+      <form id="login-form">
+        <div class="form-group">
+          <label class="form-label" for="inp-username">Логин (Keycloak Realm: mind-equip)</label>
+          <input type="text" class="form-input mono" id="inp-username" required placeholder="admin / engineer / operator" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="inp-password">Пароль</label>
+          <input type="password" class="form-input mono" id="inp-password" required placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 6px;">
+          Войти в систему
+        </button>
+      </form>
+
+      <div class="divider-or">Быстрый вход под ролью (Keycloak Realm)</div>
+
+      <button type="button" class="quick-account-btn" data-user="admin" data-pass="admin123">
+        <div>
+          <div style="font-weight: 600;">Главный механик (admin)</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Полный доступ · перевыпуск QR · ТО и ЗИП</div>
+        </div>
+        <span class="mono" style="font-size: 11px; color: var(--accent-cyan);">admin123</span>
+      </button>
+
+      <button type="button" class="quick-account-btn" data-user="engineer" data-pass="engineer123">
+        <div>
+          <div style="font-weight: 600;">Инженер ТО и диагностики (engineer)</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Графики ТО · дефекты · перевыпуск QR</div>
+        </div>
+        <span class="mono" style="font-size: 11px; color: var(--state-good);">engineer123</span>
+      </button>
+
+      <button type="button" class="quick-account-btn" data-user="operator" data-pass="operator123">
+        <div>
+          <div style="font-weight: 600;">Дежурный оператор КС/ГРС (operator)</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Сканер QR · просмотр PDF-паспортов</div>
+        </div>
+        <span class="mono" style="font-size: 11px; color: var(--text-secondary);">operator123</span>
+      </button>
+
+      <div style="text-align: center; margin-top: 16px;">
+        <a href="index.html" style="font-size: 13px; color: var(--text-secondary);">← Вернуться к сканеру без входа</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="static/js/gh-pages-adapter.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('login-form');
+      const errBox = document.getElementById('login-error');
+      const params = new URLSearchParams(window.location.search);
+      const target = params.get('target') || 'index.html';
+
+      function doLogin(u, p) {
+        const profile = window.ICAAuth.loginUser(u, p);
+        if (!profile) {
+          errBox.textContent = 'Неверный логин или пароль. Используйте admin/admin123, engineer/engineer123 или operator/operator123.';
+          errBox.style.display = 'block';
+          return;
+        }
+        window.location.href = target;
+      }
+
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        doLogin(document.getElementById('inp-username').value, document.getElementById('inp-password').value);
+      });
+
+      document.querySelectorAll('.quick-account-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          doLogin(btn.getAttribute('data-user'), btn.getAttribute('data-pass'));
+        });
+      });
+    });
+  </script>
+</body>
+</html>

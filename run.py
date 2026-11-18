@@ -44,22 +44,27 @@ def main() -> None:
     ssl_info = ensure_self_signed_cert(force_regen=args.regen_cert)
 
     # 2. Вывод приборной сводки запуска в консоль
-    print("=" * 70)
-    print("  MIND EQUIP // УЗЕЛ ПАСПОРТИЗАЦИИ И ТО ОБОРУДОВАНИЯ (TLS 5810)")
-    print("=" * 70)
+    print("=" * 72)
+    print(f"  MIND EQUIP // УЗЕЛ ПАСПОРТИЗАЦИИ И ТО ОБОРУДОВАНИЯ (HTTPS {args.port})")
+    print("=" * 72)
     print(f"  • Адрес привязки:      https://{args.host}:{args.port}")
+    print(f"  • Сервер Keycloak:     {config.KEYCLOAK_URL}/realms/{config.KEYCLOAK_REALM}")
     print(f"  • TLS-сертификат:      {ssl_info['cert_file']}")
-    print(f"  • Приватный ключ:      {ssl_info['key_file']}")
     print(f"  • SAN IP-адреса:       {', '.join(ssl_info['san_ips'])}")
     print(f"  • Статус сертификата:  {'ПЕРЕГЕНЕРИРОВАН' if ssl_info['regenerated'] else 'ДЕЙСТВИТЕЛЕН (OK)'}")
-    print("-" * 70)
-    print("  ПОДКЛЮЧЕНИЕ СО СМАРТФОНА ПО WI-FI (сканирование QR-кодов):")
+    print("-" * 72)
+    print("  УЧЁТНЫЕ ЗАПИСИ KEYCLOAK (Realm: mind-equip):")
+    print("    • admin    / admin123    (Главный механик / Администратор)")
+    print("    • engineer / engineer123 (Сменный инженер ТО)")
+    print("    • operator / operator123 (Оператор / Наблюдатель)")
+    print("-" * 72)
+    print("  ПОДКЛЮЧЕНИЕ СО СМАРТФОНА ПО WI-FI (сканирование защищённых QR):")
     if ssl_info["lan_urls"]:
         for url in ssl_info["lan_urls"]:
             print(f"    ➔  {url}")
     else:
         print(f"    ➔  https://localhost:{args.port}")
-    print("=" * 70)
+    print("=" * 72)
     print("  Для остановки сервера нажмите Ctrl + C\n")
 
     # 3. Запуск HTTP/TLS сервера

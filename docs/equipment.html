@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Интергаз Центральная Азия — Карточка агрегата (ЛПУ / ГРС / КС)</title>
+  <meta name="description" content="АО «Интергаз Центральная Азия» — электронный паспорт оборудования, графики ТО, фотоосмотры и дефектные ведомости ЛПУ, ГРС и КС">
+  <link rel="stylesheet" href="static/css/styles.css">
+</head>
+<body>
+  <div class="app-shell" id="equipment-container" data-equipment-id="ks-gpa-16-ural">
+    
+    <!-- Top Instrument Bar -->
+    <header class="top-bar">
+      <div class="top-bar-inner">
+        <div class="brand-section">
+          <a href="index.html" class="mind-badge" aria-label="Интергаз Центральная Азия (На главную)" style="width: 28px; height: 28px;">
+            <span class="mind-badge-glyph" style="font-size: 11px; letter-spacing: 0;">ICA</span>
+          </a>
+          <h1 class="node-title">Интергаз Центральная Азия · Карточка агрегата</h1>
+        </div>
+        
+        <div class="node-meta">
+          <div class="tls-badge" title="Защищённый автономный TLS-узел (порт 8443)">
+            <span class="cyan-dot" aria-hidden="true"></span>
+            <span>TLS · HTTPS</span>
+          </div>
+
+          <!-- Keycloak User Authentication Badge -->
+          <div class="user-auth-wrap" id="gh-auth-header">
+            
+            <a href="login.html" class="btn-login" id="btn-top-login" title="Войти в систему через Keycloak">
+              <span class="cyan-dot" aria-hidden="true"></span>
+              <span>Войти</span>
+            </a>
+            
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Viewport -->
+    <main class="main-viewport">
+      
+      <!-- Equipment Passport Summary Header -->
+      <section class="detail-header" id="equip-detail-header">
+        <div class="detail-nav">
+          <a href="index.html" class="back-link">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            К сканеру
+          </a>
+          <span class="status-chip good" id="equip-status-chip">
+            <span class="mono">●</span>
+            <span id="equip-status-text">Загрузка...</span>
+          </span>
+        </div>
+
+        <div class="detail-title-group">
+          <h2 class="detail-title" id="equip-title">Загрузка данных оборудования...</h2>
+          <div class="mono" style="font-size: 14px; color: var(--text-secondary);" id="equip-inv-num">ИНВ: —</div>
+        </div>
+
+        <div class="detail-specs-bar" id="equip-specs-bar">
+          <div class="spec-item">
+            <span>Локация:</span>
+            <strong id="equip-location">—</strong>
+          </div>
+          <div class="spec-item" id="spec-model-wrap">
+            <span>Модель:</span>
+            <span class="mono" id="equip-model">—</span>
+          </div>
+          <div class="spec-item" id="spec-serial-wrap">
+            <span>Зав. №:</span>
+            <span class="mono" id="equip-serial">—</span>
+          </div>
+          <div class="spec-item" id="spec-mfr-wrap">
+            <span>Завод:</span>
+            <span id="equip-mfr">—</span>
+          </div>
+          <div class="spec-item" id="spec-year-wrap">
+            <span>Ввод:</span>
+            <span class="mono" id="equip-year">—</span>
+          </div>
+        </div>
+
+        <div class="detail-header-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-show-qr-sticker">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            QR-этикетка
+          </button>
+          
+          <a href="#" class="btn btn-secondary btn-sm" id="btn-equip-budget-pdf" target="_blank" download>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            График ТО и ЗИП (PDF)
+          </a>
+        </div>
+      </section>
+
+      <!-- Equipment Maintenance Alert Strip (If maintenance is due or overdue) -->
+      <div class="alert-banner" id="equip-alert-banner" style="display: none;">
+        <div class="alert-banner-top">
+          <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <div class="alert-content">
+            <div class="alert-headline" id="equip-alert-headline">Скоро плановое ТО</div>
+            <div class="alert-details" id="equip-alert-details">
+              Приближается срок планового ТО. Проверьте наличие запасных частей и материалов (ЗИП) на складе.
+            </div>
+          </div>
+        </div>
+        <div class="alert-actions">
+          <button type="button" class="btn btn-warn btn-sm" id="btn-equip-tab-budget">
+            График ТО и ЗИП
+          </button>
+          <a href="#" class="btn btn-secondary btn-sm" id="btn-equip-alert-pdf" target="_blank" download>
+            Скачать график ТО и ЗИП (PDF)
+          </a>
+        </div>
+      </div>
+
+      <!-- Compact 4-Section Segmented Control (Designed to fit 390px iPhone width) -->
+      <nav class="segmented-control" role="tablist" aria-label="Разделы оборудования" style="padding: 2px;">
+        <button type="button" class="segmented-item active" role="tab" aria-selected="true" id="tab-btn-docs" data-target="section-docs" style="font-size: 13px; padding: 0 4px;">
+          Документы
+        </button>
+        <button type="button" class="segmented-item" role="tab" aria-selected="false" id="tab-btn-maint" data-target="section-maint" style="font-size: 13px; padding: 0 4px;">
+          График ТО и ЗИП
+        </button>
+        <button type="button" class="segmented-item" role="tab" aria-selected="false" id="tab-btn-photos" data-target="section-photos" style="font-size: 13px; padding: 0 4px;">
+          Фотоосмотр
+        </button>
+        <button type="button" class="segmented-item" role="tab" aria-selected="false" id="tab-btn-defects" data-target="section-defects" style="font-size: 13px; padding: 0 4px;">
+          Дефекты
+          <span class="seg-badge" id="defects-badge" style="display: none;">0</span>
+        </button>
+      </nav>
+
+      <!-- Section 1: Documents (PDF) -->
+      <section class="tab-view active" id="section-docs" role="tabpanel" aria-labelledby="tab-btn-docs">
+        
+        <!-- Category: Passport -->
+        <div class="doc-category-box">
+          <div class="doc-category-top">
+            <h3 class="doc-category-title">1. Паспорт оборудования (PDF)</h3>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="triggerDocUpload('passport')">
+              + Загрузить PDF
+            </button>
+          </div>
+          <div id="docs-passport-list">
+            <div class="empty-state-notice">Проверка наличия паспорта...</div>
+          </div>
+        </div>
+
+        <!-- Category: Diagnostics -->
+        <div class="doc-category-box">
+          <div class="doc-category-top">
+            <h3 class="doc-category-title">2. Документы диагностики (PDF)</h3>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="triggerDocUpload('diagnostics')">
+              + Загрузить PDF
+            </button>
+          </div>
+          <div id="docs-diagnostics-list">
+            <div class="empty-state-notice">Проверка документов диагностики...</div>
+          </div>
+        </div>
+
+        <!-- Category: Schedule -->
+        <div class="doc-category-box">
+          <div class="doc-category-top">
+            <h3 class="doc-category-title">3. Графики и регламенты ТО (PDF)</h3>
+            <div class="doc-top-actions">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-generate-schedule-pdf">
+                Сформировать график ТО в PDF
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="triggerDocUpload('schedule')">
+                + Загрузить PDF
+              </button>
+            </div>
+          </div>
+          <div id="docs-schedule-list">
+            <div class="empty-state-notice">Проверка графиков ТО...</div>
+          </div>
+        </div>
+
+        <!-- Category: Defects Statements -->
+        <div class="doc-category-box">
+          <div class="doc-category-top">
+            <h3 class="doc-category-title">4. Дефектные ведомости (PDF)</h3>
+            <div class="doc-top-actions">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-generate-defect-pdf-from-docs">
+                Сформировать ведомость в PDF
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="triggerDocUpload('defects')">
+                + Загрузить PDF
+              </button>
+            </div>
+          </div>
+          <div id="docs-defects-list">
+            <div class="empty-state-notice">Проверка дефектных ведомостей...</div>
+          </div>
+        </div>
+
+        <!-- Hidden document file upload input -->
+        <input type="file" id="doc-file-upload-input" accept=".pdf,application/pdf" class="sr-only">
+      </section>
+
+      <!-- Section 2: Maintenance Tasks & Budget -->
+      <section class="tab-view" id="section-maint" role="tabpanel" aria-labelledby="tab-btn-maint" style="display: none;">
+        
+        <!-- Maintenance Evaluation Metrics for this equipment -->
+        <div class="budget-summary-grid">
+          <div class="metric-panel">
+            <div class="metric-label">Видов ТО на контроле</div>
+            <div class="metric-value mono" id="equip-metric-tasks-count">0</div>
+          </div>
+          <div class="metric-panel">
+            <div class="metric-label">Позиций ЗИП в дефиците</div>
+            <div class="metric-value mono" id="equip-metric-deficit-count">0</div>
+          </div>
+          <div class="metric-panel highlighted">
+            <div class="metric-label">Открытых дефектов</div>
+            <div class="metric-value mono" id="equip-metric-defects-count">0</div>
+          </div>
+          <div class="metric-panel">
+            <div class="metric-label">Действие</div>
+            <a href="#" class="btn btn-primary btn-sm" id="btn-download-maint-budget-pdf" target="_blank" download style="margin-top: 4px;">
+              Скачать график ТО и ЗИП (PDF)
+            </a>
+          </div>
+        </div>
+
+        <!-- Top Task Actions & Collapsible Form -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; flex-wrap: wrap;">
+          <h3 style="font-size: 16px; font-weight: 600;">Регламентные виды ТО</h3>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-add-maint">
+            + Добавить вид ТО и материалы
+          </button>
+        </div>
+
+        <!-- Collapsible Add Maintenance Form -->
+        <div class="panel" id="panel-add-maint" style="display: none; border-color: var(--hairline-hover);">
+          <div class="panel-header">
+            <div class="panel-title">Новый вид технического обслуживания</div>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-cancel-add-maint">Скрыть</button>
+          </div>
+          <form id="form-add-maintenance">
+            <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px;">
+              <div class="form-group">
+                <label class="form-label" for="inp-maint-code">Код вида ТО *</label>
+                <input type="text" class="form-input mono" id="inp-maint-code" required placeholder="ТО-1 / ТО-2 / ТР">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="inp-maint-title">Наименование регламента *</label>
+                <input type="text" class="form-input" id="inp-maint-title" required placeholder="Ежемесячное техническое обслуживание">
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="form-group">
+                <label class="form-label" for="inp-maint-interval">Периодичность (дней) *</label>
+                <input type="number" class="form-input mono" id="inp-maint-interval" required min="1" max="3650" value="30">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="inp-maint-next-date">Плановая дата следующего ТО *</label>
+                <input type="date" class="form-input mono" id="inp-maint-next-date" required>
+              </div>
+              <input type="hidden" id="inp-maint-service-cost" value="0">
+            </div>
+
+            <!-- Dynamic Materials Table -->
+            <div style="margin: 14px 0 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label class="form-label" style="font-weight: 600; color: var(--text-primary);">Нормы материалов и ЗИП</label>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-add-material-row">+ Добавить строку ТМЦ</button>
+              </div>
+              <div id="maint-materials-rows" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Rows injected dynamically -->
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="inp-maint-notes">Примечания / Техкарта</label>
+              <textarea class="form-textarea" id="inp-maint-notes" placeholder="Особые указания по проведению работ..."></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
+              Сохранить регламент ТО
+            </button>
+          </form>
+        </div>
+
+        <!-- Maintenance Tasks List -->
+        <div id="maint-tasks-container">
+          <div class="empty-state-notice">Загрузка регламентов ТО...</div>
+        </div>
+
+        <!-- Maintenance History Log -->
+        <div class="panel" style="margin-top: 24px;">
+          <div class="panel-header">
+            <div class="panel-title">История выполнения ТО</div>
+          </div>
+          <div id="maint-history-container">
+            <div class="empty-state-notice">Записей об истории ТО пока нет.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 3: Photo Inspection -->
+      <section class="tab-view" id="section-photos" role="tabpanel" aria-labelledby="tab-btn-photos" style="display: none;">
+        
+        <!-- Quick Capture Form from Smartphone -->
+        <div class="photo-form-card">
+          <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 10px;">Фиксация визуального состояния</h3>
+          
+          <form id="form-upload-photo">
+            <div class="form-group">
+              <label class="form-label">Оценка технического состояния *</label>
+              <div class="condition-selector-chips" role="radiogroup" aria-label="Техническое состояние">
+                <button type="button" class="condition-chip active good" data-val="good">
+                  Исправно
+                </button>
+                <button type="button" class="condition-chip attention" data-val="attention">
+                  Требует внимания
+                </button>
+                <button type="button" class="condition-chip critical" data-val="critical">
+                  Дефект
+                </button>
+              </div>
+              <input type="hidden" id="inp-photo-condition" value="good">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="inp-photo-node">Осматриваемый узел / агрегат</label>
+              <input type="text" class="form-input" id="inp-photo-node" placeholder="Например: Сальниковое уплотнение или подшипник">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="inp-photo-comment">Комментарий специалиста</label>
+              <textarea class="form-textarea" id="inp-photo-comment" placeholder="Описание состояния, наличие следов утечки, нагрева или вибрации..."></textarea>
+            </div>
+
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <button type="button" class="btn btn-secondary" id="btn-select-photo">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                  <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+                Сделать снимок / Выбрать фото
+              </button>
+              <input type="file" id="inp-photo-file" accept="image/*" capture="environment" class="sr-only">
+              <span id="photo-filename-label" style="font-size: 13px; color: var(--text-muted);">Файл не выбран</span>
+            </div>
+
+            <img id="photo-preview-img" class="photo-preview-thumbnail" alt="Предпросмотр снимка">
+
+            <button type="submit" class="btn btn-primary" id="btn-submit-photo" style="margin-top: 14px; display: none;">
+              Зафиксировать осмотр в базе
+            </button>
+          </form>
+        </div>
+
+        <!-- Chronological Photo Inspection Gallery -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              Хронологическая лента фотоосмотров
+              <span class="mono" style="font-size: 13px; color: var(--text-muted);" id="photos-total-count">(0)</span>
+            </div>
+          </div>
+          <div class="photo-gallery-grid" id="photos-gallery-container">
+            <div class="empty-state-notice">Фотографий осмотра пока нет.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 4: Defects & Statements -->
+      <section class="tab-view" id="section-defects" role="tabpanel" aria-labelledby="tab-btn-defects" style="display: none;">
+        
+        <div class="section-toolbar">
+          <h3 style="font-size: 16px; font-weight: 600;">Журнал дефектов</h3>
+          <div class="doc-top-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-generate-defect-pdf">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Дефектная ведомость (PDF)
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-add-defect">
+              + Зафиксировать дефект
+            </button>
+          </div>
+        </div>
+
+        <!-- Collapsible Add Defect Form -->
+        <div class="panel" id="panel-add-defect" style="display: none; border-color: var(--hairline-hover);">
+          <div class="panel-header">
+            <div class="panel-title">Регистрация выявленного дефекта</div>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-cancel-add-defect">Скрыть</button>
+          </div>
+          <form id="form-add-defect">
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+              <div class="form-group">
+                <label class="form-label" for="inp-defect-node">Дефектный узел / деталь *</label>
+                <input type="text" class="form-input" id="inp-defect-node" required placeholder="Например: Передний подшипник вала">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="inp-defect-severity">Критичность *</label>
+                <select class="form-select" id="inp-defect-severity">
+                  <option value="low">Низкая</option>
+                  <option value="medium" selected>Средняя</option>
+                  <option value="high">Высокая</option>
+                  <option value="critical">Критическая / Аварийная</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="inp-defect-desc">Описание дефекта *</label>
+              <textarea class="form-textarea" id="inp-defect-desc" required placeholder="Характер неисправности, люфт, повышенный шум, утечка..."></textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="inp-defect-action">Рекомендуемое техническое мероприятие</label>
+              <input type="text" class="form-input" id="inp-defect-action" value="Выполнить ремонт / замену узла">
+            </div>
+
+            <input type="hidden" id="inp-defect-cost" value="0">
+
+            <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
+              Зафиксировать дефект в журнале
+            </button>
+          </form>
+        </div>
+
+        <!-- Defects List -->
+        <div id="defects-list-container">
+          <div class="empty-state-notice">Загрузка журнала дефектов...</div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- Modal: Complete Maintenance Dialog -->
+    <div class="modal-overlay" id="modal-complete-maint" role="dialog" aria-modal="true" aria-labelledby="modal-complete-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-complete-title">Отметка о выполнении ТО</h2>
+          <button type="button" class="btn btn-ghost btn-icon-only" id="btn-close-complete-modal" aria-label="Закрыть">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <form id="form-complete-maint">
+          <input type="hidden" id="inp-complete-task-id">
+          <div class="form-group">
+            <label class="form-label">Выполняемый вид ТО</label>
+            <div id="complete-task-display-name" class="mono" style="font-weight: 600; color: var(--text-primary); padding: 8px 0;">—</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="inp-complete-performer">Исполнитель / Инженер *</label>
+            <input type="text" class="form-input" id="inp-complete-performer" required value="Дежурный инженер">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="inp-complete-date">Дата фактического проведения *</label>
+            <input type="date" class="form-input mono" id="inp-complete-date" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="inp-complete-comment">Комментарий к выполненным работам</label>
+            <textarea class="form-textarea" id="inp-complete-comment" placeholder="Замечания, состояние узлов после обслуживания..."></textarea>
+          </div>
+
+          <div style="margin: 12px 0;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13.5px; color: var(--text-secondary);">
+              <input type="checkbox" id="inp-complete-restock" style="width: 18px; height: 18px;">
+              <span>Списать израсходованные материалы со склада</span>
+            </label>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 16px;">
+            <button type="submit" class="btn btn-primary" style="flex: 2;">
+              Подтвердить выполнение ТО
+            </button>
+            <button type="button" class="btn btn-secondary" id="btn-cancel-complete-modal" style="flex: 1;">
+              Отмена
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: QR Code Sticker Preview & Print -->
+    <div class="modal-overlay" id="modal-qr-sticker" role="dialog" aria-modal="true" aria-labelledby="modal-qr-title">
+      <div class="modal-card" style="text-align: center; max-width: 420px;">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-qr-title">Защищённый QR-код агрегата</h2>
+          <button type="button" class="btn btn-ghost btn-icon-only" id="btn-close-qr-modal" aria-label="Закрыть">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div style="padding: 12px 0;">
+          <div class="secure-qr-badge">
+            <span class="cyan-dot"></span>
+            <span>Закрытый контур Mind Equip</span>
+          </div>
+          <p class="secure-qr-hint">
+            Данный код сканируется <strong>только через встроенную камеру приложения</strong>. Обычные камеры смартфонов не открывают веб-ссылку.
+          </p>
+          <img id="qr-modal-image" src="qr/ks-gpa-16-ural.png" alt="Защищённый QR-код агрегата" style="margin: 0 auto; max-width: 260px; border-radius: var(--radius-sm); border: 1px solid var(--hairline-hover); background: #FFFFFF; padding: 10px;">
+          <div class="mono" style="font-size: 13px; color: var(--text-secondary); margin-top: 10px;" id="qr-modal-inv"></div>
+        </div>
+        <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+          <a href="qr/ks-gpa-16-ural.png" id="qr-modal-download-link" class="btn btn-primary btn-sm" download="secure_qr_ks-gpa-16-ural.png">
+            Скачать стикер (PNG)
+          </a>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="window.print()">
+            Печать
+          </button>
+          <button type="button" class="btn btn-warn btn-sm" id="btn-rotate-qr-token" style="display: none;" title="Сгенерировать новый ключ. Прежний распечатанный QR-код перестанет работать.">🔄 Перевыпустить токен</button>
+          
+        </div>
+      </div>
+    </div>
+
+    <!-- Lightbox Modal for Photo Inspection -->
+    <div class="lightbox-overlay" id="lightbox-modal">
+      <button type="button" class="btn btn-ghost btn-icon-only" id="btn-close-lightbox" style="position: absolute; top: 16px; right: 16px; color: #FFFFFF;" aria-label="Закрыть просмотр">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      <img id="lightbox-image" class="lightbox-img" alt="Фото осмотра в полном размере">
+      <div id="lightbox-caption" style="margin-top: 12px; font-size: 14px; color: var(--text-secondary); text-align: center; max-width: 600px;"></div>
+    </div>
+
+  </div>
+
+  <!-- Local Offline Scripts (Zero CDN) -->
+  <script>
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      var eqId = params.get('id') || 'ks-gpa-16-ural';
+      var c = document.getElementById('equipment-container');
+      if (c) c.setAttribute('data-equipment-id', eqId);
+      var img = document.getElementById('qr-modal-image');
+      if (img) img.src = 'qr/' + encodeURIComponent(eqId) + '.png';
+      var dl = document.getElementById('qr-modal-download-link');
+      if (dl) {
+        dl.href = 'qr/' + encodeURIComponent(eqId) + '.png';
+        dl.setAttribute('download', 'secure_qr_' + eqId + '.png');
+      }
+    })();
+  </script>
+  <script src="static/js/gh-pages-adapter.js"></script>
+  <script src="static/js/equipment.js"></script>
+</body>
+</html>
