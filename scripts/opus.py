@@ -85,7 +85,7 @@ def call_opus(messages: list[dict]) -> str:
     payload = {
         "model": MODEL,
         "messages": messages,
-        "max_tokens": 3500,
+        "max_tokens": 4096,
         "temperature": 0.2
     }
     data = json.dumps(payload).encode("utf-8")
@@ -98,9 +98,25 @@ def call_opus(messages: list[dict]) -> str:
         }
     )
     try:
-        with urllib.request.urlopen(req, timeout=90, context=SSL_CTX) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data["choices"][0]["message"]["content"]
+        with urllib.request.urlopen(req, timeout=35, context=SSL_CTX) as resp:
+            res_data = json.loads(resp.read().decode("utf-8"))
+            choice = res_data.get("choices", [{}])[0]
+            message = choice.get("message", {})
+            content = message.get("content")
+            reasoning = message.get("reasoning_content")
+
+            if content and str(content).strip():
+                return str(content).strip()
+            if reasoning and str(reasoning).strip():
+                return str(reasoning).strip()
+            
+            finish_reason = choice.get("finish_reason", "unknown")
+            return f"[Внимание: Opus вернул пустой ответ (finish_reason='{finish_reason}'). Возможно, на аккаунте SmartAPI исчерпан баланс токенов для claude-opus-5-5. Попробуйте модель gemini в ai_agent.py]"
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="replace")
+        return f"[SmartAPI HTTP {e.code}]: {err_body} (Проверьте баланс токенов SmartAPI)"
+    except KeyboardInterrupt:
+        return "[Запрос прерван пользователем (Ctrl+C)]"
     except Exception as e:
         return f"[Ошибка связи с Opus]: {e}"
 
@@ -167,10 +183,11 @@ def execute_tools(text: str) -> tuple[bool, str]:
             out = res.stdout
             if res.stderr:
                 out += "\n" + res.stderr
-            if not out.strip():
-                out = "(Команда выполнена успешно)"
-            print(f"{CLR_GRAY}[Результат ПК]: {out.strip()[:300]}...{CLR_RESET}")
-            actions.append(f"[Результат команды на ПК]:\n{out.strip()}")
+            clean_out = out.strip()
+            if len(clean_out) > 2000:
+                clean_out = clean_out[:2000] + f"\n... [вывод обрезан: всего {len(out)} символов]"
+            print(f"{CLR_GRAY}[Результат ПК]: {clean_out[:300]}...{CLR_RESET}")
+            actions.append(f"[Результат команды на ПК]:\n{clean_out}")
         except Exception as e:
             actions.append(f"[Ошибка команды]: {e}")
 
@@ -181,7 +198,15 @@ def execute_tools(text: str) -> tuple[bool, str]:
 
 def opus_turn(history: list[dict]) -> str:
     for _ in range(5):
-        reply = call_opus(history)
+        if len(history) > 14:
+            active_history = [history[0]] + history[-12:]
+        else:
+            active_history = history
+
+        reply = call_opus(active_history)
+        if not reply or not str(reply).strip():
+            return "[Ответ пуст. Проверьте остаток токенов SmartAPI]"
+
         has_tools, tool_out = execute_tools(reply)
         if has_tools:
             history.append({"role": "assistant", "content": reply})

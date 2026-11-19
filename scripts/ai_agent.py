@@ -109,7 +109,7 @@ def call_smartapi(messages: list[dict], model: str, api_key: str = DEFAULT_API_K
     payload = {
         "model": model,
         "messages": messages,
-        "max_tokens": 3000,
+        "max_tokens": 4096,
         "temperature": 0.2
     }
     data = json.dumps(payload).encode("utf-8")
@@ -123,14 +123,27 @@ def call_smartapi(messages: list[dict], model: str, api_key: str = DEFAULT_API_K
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=90, context=SSL_CTX) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data["choices"][0]["message"]["content"]
+        with urllib.request.urlopen(req, timeout=35, context=SSL_CTX) as resp:
+            res_data = json.loads(resp.read().decode("utf-8"))
+            choice = res_data.get("choices", [{}])[0]
+            message = choice.get("message", {})
+            content = message.get("content")
+            reasoning = message.get("reasoning_content")
+
+            if content and str(content).strip():
+                return str(content).strip()
+            if reasoning and str(reasoning).strip():
+                return str(reasoning).strip()
+            
+            finish_reason = choice.get("finish_reason", "unknown")
+            return f"[Внимание: Модель {model} вернула пустой ответ. Причина: finish_reason='{finish_reason}'. Рекомендуется переключиться на /model gemini]"
     except urllib.error.HTTPError as e:
         err_body = e.read().decode("utf-8", errors="replace")
-        return f"[SmartAPI HTTP {e.code}]: {err_body}"
+        return f"[SmartAPI HTTP {e.code}]: {err_body} (Попробуйте переключиться на /model gemini)"
+    except KeyboardInterrupt:
+        return "[Запрос прерван пользователем (Ctrl+C)]"
     except Exception as e:
-        return f"[SmartAPI Error]: {e}"
+        return f"[SmartAPI Ошибка связи]: {e} (Попробуйте переключиться на /model gemini)"
 
 
 def execute_tools(text: str) -> tuple[bool, str]:
@@ -203,10 +216,11 @@ def execute_tools(text: str) -> tuple[bool, str]:
             out = res.stdout
             if res.stderr:
                 out += "\n[Ошибки / Stderr]:\n" + res.stderr
-            if not out.strip():
-                out = "(Команда выполнена успешно, вывод пуст)"
-            print(f"{CLR_GRAY}[Результат с ПК]: {out.strip()[:350]}...{CLR_RESET}")
-            actions_taken.append(f"[Результат выполнения команды `{cmd_clean}` на ПК]:\n{out.strip()}")
+            clean_out = out.strip()
+            if len(clean_out) > 2000:
+                clean_out = clean_out[:2000] + f"\n... [вывод обрезан для экономии токенов: всего {len(out)} символов]"
+            print(f"{CLR_GRAY}[Результат с ПК]: {clean_out[:350]}...{CLR_RESET}")
+            actions_taken.append(f"[Результат выполнения команды `{cmd_clean}` на ПК]:\n{clean_out}")
         except subprocess.TimeoutExpired:
             actions_taken.append(f"[Таймаут]: Команда `{cmd_clean}` выполнялась более 60 секунд.")
         except Exception as e:
@@ -219,9 +233,17 @@ def execute_tools(text: str) -> tuple[bool, str]:
 
 def agent_turn(conversation: list[dict], model: str, api_key: str = DEFAULT_API_KEY) -> str:
     """Итерационный цикл агента (ReAct loop): модель выдает команду -> скрипт выполняет -> модель анализирует."""
-    max_steps = 5
+    max_steps = 6
     for _ in range(max_steps):
-        reply = call_smartapi(conversation, model=model, api_key=api_key)
+        # Ограничиваем историю (системный промпт + последние 12 реплик) для предотвращения раздувания токенов
+        if len(conversation) > 14:
+            active_conv = [conversation[0]] + conversation[-12:]
+        else:
+            active_conv = conversation
+
+        reply = call_smartapi(active_conv, model=model, api_key=api_key)
+        if not reply or not str(reply).strip():
+            return f"[Ответ от {model} пуст. Рекомендуется переключиться на /model gemini]"
 
         # Проверка и выполнение вызовов инструментов
         has_tools, tool_results = execute_tools(reply)
@@ -229,7 +251,7 @@ def agent_turn(conversation: list[dict], model: str, api_key: str = DEFAULT_API_
             conversation.append({"role": "assistant", "content": reply})
             conversation.append({
                 "role": "user",
-                "content": f"{tool_results}\n\nПроанализируй полученный результат и дай итоговый ответ пользователю на русском языке."
+                "content": f"{tool_results}\n\nПроанализируй полученный результат и дай понятный итоговый ответ пользователю на русском языке."
             })
         else:
             return reply
