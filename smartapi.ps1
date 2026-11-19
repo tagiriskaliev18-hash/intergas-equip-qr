@@ -1,6 +1,6 @@
 # SmartAPI AI Assistant for AO Intergas Central Asia
 # Direct connection via SmartAPI gateway: https://smartapi.pro/v1
-# No Google Workspace login, no Node.js required. Works in native PowerShell.
+# Pure ASCII script - 100% compatible with PowerShell 5.1 and 7+
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -20,9 +20,10 @@ Write-Host ' Gateway: https://smartapi.pro/v1 | Model: gemini-3.8-flash' -Foregr
 Write-Host '========================================================================' -ForegroundColor Cyan
 Write-Host ''
 
-# 1. Download or locate project on Desktop
+# 1. Target directory
 $DesktopDir = [Environment]::GetFolderPath('Desktop')
 $TargetDir = Join-Path $DesktopDir 'QRcode'
+$EnvFilePath = Join-Path $TargetDir '.env'
 
 if (-not (Test-Path $TargetDir)) {
     Write-Host '[*] Downloading project from GitHub to Desktop\QRcode...' -ForegroundColor Yellow
@@ -45,19 +46,28 @@ if (-not (Test-Path $TargetDir)) {
     }
 }
 
-# 2. Load GEMINI.md project memory (safely in UTF-8 bytes)
-$systemPrompt = 'You are the leading AI engineer for AO Intergas Central Asia. Always respond in Russian. Core rule: ZERO money or prices, only physical units (days, hours, units, liters, sets) and defect counts. Stack: FastAPI 8443 HTTPS, Keycloak 26, Active Directory LDAP, HMAC-SHA256 closed QR code.'
+if (-not (Test-Path $EnvFilePath)) {
+    $exampleEnv = Join-Path $TargetDir '.env.ad.example'
+    if (Test-Path $exampleEnv) {
+        Copy-Item $exampleEnv $EnvFilePath -Force
+    }
+}
+
+# 2. Load system context
+$systemPrompt = 'You are the leading AI engineer for AO Intergas Central Asia. Always answer in Russian. Configuration file path on this computer: ' + $EnvFilePath + '. User can open and edit it via command: notepad ' + $EnvFilePath + '. In that file user configures AD_BIND_DN and AD_BIND_PASSWORD. NEVER output pseudo-tools, bash calls, or XML/DSML tags. Answer strictly in clean Russian text.'
 
 $geminiMdPath = Join-Path $TargetDir 'GEMINI.md'
 if (Test-Path $geminiMdPath) {
     try {
         $bytes = [System.IO.File]::ReadAllBytes($geminiMdPath)
-        $systemPrompt = [System.Text.Encoding]::UTF8.GetString($bytes)
+        $systemPrompt = $systemPrompt + '
+
+' + [System.Text.Encoding]::UTF8.GetString($bytes)
         Write-Host '[+] Knowledge base (GEMINI.md) successfully loaded into memory!' -ForegroundColor Green
     } catch {}
 }
 
-# 3. SmartAPI invocation function
+# 3. SmartAPI call function
 function Invoke-SmartApiChat {
     param (
         [array]$Messages,
@@ -80,13 +90,17 @@ function Invoke-SmartApiChat {
 
     try {
         $res = Invoke-RestMethod -Uri ($BaseUrl + '/chat/completions') -Method Post -Headers $headers -Body $bodyBytes -TimeoutSec 60
-        return $res.choices[0].message.content
+        $rawText = $res.choices[0].message.content
+        if ($rawText -like '*DSML*' -or $rawText -like '*<|*') {
+            return ('Config file path: ' + $EnvFilePath + '. Run command: notepad ' + $EnvFilePath)
+        }
+        return $rawText
     } catch {
         return ('[SmartAPI Error]: ' + $_.Exception.Message)
     }
 }
 
-# 4. Check model connection
+# 4. Check connection
 Write-Host ('[*] Testing connection to ' + $CurrentModel + ' via SmartAPI...') -ForegroundColor Yellow
 $testMsgs = @(
     @{ role = 'user'; content = 'Confirm connection and state readiness in Russian in one sentence.' }
@@ -97,9 +111,10 @@ Write-Host ('[+] AI Status: ' + $testResp.Trim()) -ForegroundColor Green
 Write-Host ''
 Write-Host '========================================================================' -ForegroundColor Green
 Write-Host ' INTERACTIVE AI ASSISTANT READY // AO INTERGAS CENTRAL ASIA' -ForegroundColor Green
+Write-Host (' Project folder: ' + $TargetDir) -ForegroundColor White
+Write-Host (' Env config:     ' + $EnvFilePath) -ForegroundColor Cyan
 Write-Host '========================================================================' -ForegroundColor Green
-Write-Host 'Commands: /model <name> | /clear | exit' -ForegroundColor DarkGray
-Write-Host 'Available models: gemini-3.8-flash, claude-opus-5-5, deepseek-v4-pro' -ForegroundColor DarkGray
+Write-Host 'Commands: /env (open .env in notepad) | /model name | /clear | exit' -ForegroundColor DarkGray
 Write-Host ''
 
 $history = @(
@@ -120,6 +135,12 @@ while ($true) {
     if ($userInput -eq '/clear') {
         $history = @( @{ role = 'system'; content = $systemPrompt } )
         Write-Host '[+] Dialog history cleared.' -ForegroundColor Green
+        continue
+    }
+
+    if ($userInput -eq '/env') {
+        Write-Host ('[*] Opening ' + $EnvFilePath + ' in Notepad...') -ForegroundColor Yellow
+        notepad $EnvFilePath
         continue
     }
 
