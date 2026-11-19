@@ -1,17 +1,18 @@
-﻿<#
-.SYNOPSIS
-    Скрипт автоматической установки и настройки Gemini CLI на рабочем компьютере.
+# 
+# .SYNOPSIS
+# Скрипт автоматической установки и настройки Gemini CLI на рабочем компьютере.
+# 
+# .DESCRIPTION
+# 1. Проверяет наличие Node.js и npm (при отсутствии устанавливает через winget).
+# 2. Устанавливает официальный пакет @google/gemini-cli глобально.
+# 3. Запрашивает и сохраняет GEMINI_API_KEY в переменные среды Windows (User Environment).
+# 4. Выполняет тестовый запуск Gemini CLI.
+# 5. Показывает команды для работы с проектом.
+# 
+# .EXAMPLE
+# .\scripts\setup_gemini_cli.ps1
+# 
 
-.DESCRIPTION
-    1. Проверяет наличие Node.js и npm (при отсутствии устанавливает через winget).
-    2. Устанавливает официальный пакет @google/gemini-cli глобально.
-    3. Запрашивает и сохраняет GEMINI_API_KEY в переменные среды Windows (User Environment).
-    4. Выполняет тестовый запуск Gemini CLI.
-    5. Показывает команды для работы с проектом.
-
-.EXAMPLE
-    .\scripts\setup_gemini_cli.ps1
-#>
 
 [CmdletBinding()]
 param (

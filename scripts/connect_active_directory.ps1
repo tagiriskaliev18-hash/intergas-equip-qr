@@ -1,22 +1,23 @@
-﻿<#
-.SYNOPSIS
-    Единый мастер подключения приложения Mind Equip и Keycloak к Active Directory
-    для АО «Интергаз Центральная Азия».
+# 
+# .SYNOPSIS
+# Единый мастер подключения приложения Mind Equip и Keycloak к Active Directory
+# для АО «Интергаз Центральная Азия».
+# 
+# .DESCRIPTION
+# 1. Запрашивает или принимает параметры корпоративного контроллера домена AD.
+# 2. Безопасно сохраняет настройки в локальный .env (пароль маскируется при вводе).
+# 3. Выполняет сетевую проверку портов 389/636 и валидацию Bind.
+# 4. Автоматически регистрирует провайдер User Federation в Keycloak (Realm: mind-equip).
+# 5. Настраивает маппинг групп безопасности AD в роли:
+# - GG_ICA_Mechanics  -> admin (Главный механик)
+# - GG_ICA_Engineers  -> engineer (Сменный инженер)
+# - GG_ICA_Operators  -> operator (Дежурный оператор)
+# 
+# .EXAMPLE
+# .\scripts\connect_active_directory.ps1
+# .\scripts\connect_active_directory.ps1 -Server "ldaps://dc01.intergas.kz:636" -Domain "intergas.kz" -BindDN "CN=svc_keycloak_read,OU=ServiceAccounts,DC=intergas,DC=kz"
+# 
 
-.DESCRIPTION
-    1. Запрашивает или принимает параметры корпоративного контроллера домена AD.
-    2. Безопасно сохраняет настройки в локальный .env (пароль маскируется при вводе).
-    3. Выполняет сетевую проверку портов 389/636 и валидацию Bind.
-    4. Автоматически регистрирует провайдер User Federation в Keycloak (Realm: mind-equip).
-    5. Настраивает маппинг групп безопасности AD в роли:
-       - GG_ICA_Mechanics  -> admin (Главный механик)
-       - GG_ICA_Engineers  -> engineer (Сменный инженер)
-       - GG_ICA_Operators  -> operator (Дежурный оператор)
-
-.EXAMPLE
-    .\scripts\connect_active_directory.ps1
-    .\scripts\connect_active_directory.ps1 -Server "ldaps://dc01.intergas.kz:636" -Domain "intergas.kz" -BindDN "CN=svc_keycloak_read,OU=ServiceAccounts,DC=intergas,DC=kz"
-#>
 
 [CmdletBinding()]
 param (

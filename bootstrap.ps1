@@ -1,86 +1,73 @@
-﻿<#
-.SYNOPSIS
-    Bootstrap-скрипт нулевого развёртывания для АО «Интергаз Центральная Азия».
-    Скачивает проект с GitHub, ставит зависимости, настраивает Active Directory
-    и обучает Gemini CLI полному контексту проекта.
+# Bootstrap installer for Intergas Central Asia Equipment QR & Maintenance
+# Zero-dependency setup for Windows PowerShell 5.1 and 7+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$ErrorActionPreference = 'Continue'
 
-.DESCRIPTION
-    Запуск в чистом PowerShell (без предварительной установки Git):
-    irm https://raw.githubusercontent.com/tagiriskaliev18-hash/intergas-equip-qr/main/bootstrap.ps1 | iex
-#>
+Write-Host ''
+Write-Host '========================================================================' -ForegroundColor Cyan
+Write-Host ' AUTOMATED BOOTSTRAP // AO INTERGAS CENTRAL ASIA' -ForegroundColor Cyan
+Write-Host ' Equipment Passports, Maintenance & Gemini CLI' -ForegroundColor DarkGray
+Write-Host '========================================================================' -ForegroundColor Cyan
+Write-Host ''
 
-$ErrorActionPreference = "Continue"
+$DesktopDir = [Environment]::GetFolderPath('Desktop')
+$TargetDir = Join-Path $DesktopDir 'QRcode'
 
-Write-Host "`n========================================================================" -ForegroundColor Cyan
-Write-Host " АВТОМАТИЧЕСКИЙ ЗАГРУЗЧИК // АО «ИНТЕРГАЗ ЦЕНТРАЛЬНАЯ АЗИЯ»" -ForegroundColor Cyan
-Write-Host " Комплекс паспортизации оборудования ЛПУ, ГРС, КС и Gemini CLI" -ForegroundColor DarkGray
-Write-Host "========================================================================`n" -ForegroundColor Cyan
+Write-Host ('[*] Target project folder: ' + $TargetDir) -ForegroundColor Yellow
 
-# 1. Определение целевой папки на Рабочем столе
-$DesktopDir = [Environment]::GetFolderPath("Desktop")
-$TargetDir = Join-Path $DesktopDir "QRcode"
-
-Write-Host "[*] Целевая папка проекта: $TargetDir" -ForegroundColor Yellow
-
-if (Test-Path $TargetDir) {
-    Write-Host "[!] Папка $TargetDir уже существует. Обновление файлов..." -ForegroundColor DarkYellow
-} else {
+if (-not (Test-Path $TargetDir)) {
     New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
 }
 
-# 2. Получение исходных файлов с GitHub (через Git или ZIP)
-$RepoUrl = "https://github.com/tagiriskaliev18-hash/intergas-equip-qr"
+$RepoUrl = 'https://github.com/tagiriskaliev18-hash/intergas-equip-qr'
 $gitCmd = Get-Command git -ErrorAction SilentlyContinue
-
 $downloadSuccess = $false
 
 if ($gitCmd) {
-    Write-Host "[*] Обнаружен Git. Клонирование репозитория..." -ForegroundColor Yellow
-    if (Test-Path (Join-Path $TargetDir ".git")) {
+    Write-Host '[*] Git found. Cloning repository...' -ForegroundColor Yellow
+    if (Test-Path (Join-Path $TargetDir '.git')) {
         Push-Location $TargetDir
         & git pull origin main
         Pop-Location
         $downloadSuccess = $true
     } else {
-        & git clone "$RepoUrl.git" $TargetDir
+        & git clone ($RepoUrl + '.git') $TargetDir
         if ($LASTEXITCODE -eq 0) { $downloadSuccess = $true }
     }
 }
 
 if (-not $downloadSuccess) {
-    Write-Host "[*] Скачивание архива проекта с GitHub..." -ForegroundColor Yellow
-    $zipUrl = "$RepoUrl/archive/refs/heads/main.zip"
-    $tempZip = Join-Path $env:TEMP "intergas-equip-main.zip"
-    $tempExtract = Join-Path $env:TEMP "intergas-equip-extract"
+    Write-Host '[*] Downloading project ZIP archive from GitHub...' -ForegroundColor Yellow
+    $zipUrl = $RepoUrl + '/archive/refs/heads/main.zip'
+    $tempZip = Join-Path $env:TEMP 'intergas-equip-main.zip'
+    $tempExtract = Join-Path $env:TEMP 'intergas-equip-extract'
 
     try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip -UseBasicParsing
         if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force }
         Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
-        
-        $innerFolder = Join-Path $tempExtract "intergas-equip-qr-main"
+
+        $innerFolder = Join-Path $tempExtract 'intergas-equip-qr-main'
         if (Test-Path $innerFolder) {
-            Copy-Item -Path "$innerFolder\*" -Destination $TargetDir -Recurse -Force
+            Copy-Item -Path ($innerFolder + '\*') -Destination $TargetDir -Recurse -Force
         }
         Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
         Remove-Item $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
         $downloadSuccess = $true
-        Write-Host "[+] Проект успешно распакован в $TargetDir!" -ForegroundColor Green
+        Write-Host ('[+] Project successfully extracted into ' + $TargetDir) -ForegroundColor Green
     } catch {
-        Write-Error "[-] Ошибка скачивания с GitHub: $_"
+        Write-Error ('[-] Download error from GitHub: ' + $_)
         exit 1
     }
 }
 
-# 3. Переход в папку проекта и запуск комплексного мастера установки
 Set-Location $TargetDir
-$SetupScript = Join-Path $TargetDir "setup.ps1"
+$SetupScript = Join-Path $TargetDir 'setup.ps1'
 
 if (Test-Path $SetupScript) {
-    Write-Host "`n[*] Запуск встроенного мастера настройки (setup.ps1)..." -ForegroundColor Cyan
-    & $SetupScript
+    Write-Host '[*] Launching project setup (setup.ps1)...' -ForegroundColor Cyan
+    & powershell.exe -ExecutionPolicy Bypass -File $SetupScript
 } else {
-    Write-Error "[-] Ошибка: Файл setup.ps1 не найден в $TargetDir."
+    Write-Error ('[-] Error: setup.ps1 not found in ' + $TargetDir)
     exit 1
 }

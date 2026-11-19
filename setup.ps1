@@ -2,4 +2,4 @@
 # АО «Интергаз Центральная Азия»
 param([Parameter(ValueFromRemainingArguments = $true)]$allArgs)
 $ScriptPath = Join-Path $PSScriptRoot "scripts\setup_workstation.ps1"
-& $ScriptPath @allArgs
+& powershell.exe -ExecutionPolicy Bypass -NoProfile -File $ScriptPath @allArgs
