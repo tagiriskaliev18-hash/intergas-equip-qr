@@ -1,4 +1,4 @@
-# 
+﻿# 
 # .SYNOPSIS
 # Полный автоматический мастер развертывания проекта, подключения к Active Directory
 # и настройки Gemini CLI на рабочем компьютере АО «Интергаз Центральная Азия».
@@ -190,25 +190,15 @@ if (Test-Path $srcGeminiMd) {
     Write-Host "[+] База знаний проекта (GEMINI.md) загружена в профиль агента!" -ForegroundColor Green
 }
 
-# 4.3 Настройка ключа Gemini API
-$curKey = [System.Environment]::GetEnvironmentVariable("GEMINI_API_KEY", "User")
-if (-not $curKey) { $curKey = $env:GEMINI_API_KEY }
-
-if (-not $GeminiApiKey -and -not $curKey) {
-    Write-Host "`n[?] Введите ваш Google Gemini API Key (для продолжения диалога с агентом):" -ForegroundColor Yellow
-    Write-Host "    (Бесплатный ключ берётся здесь: https://aistudio.google.com/app/apikey)" -ForegroundColor DarkGray
-    $inKey = Read-Host "GEMINI_API_KEY"
-    $GeminiApiKey = $inKey.Trim()
-} elseif ($curKey -and -not $GeminiApiKey) {
-    $GeminiApiKey = $curKey
-    Write-Host "[+] Использован существующий ключ GEMINI_API_KEY из профиля Windows." -ForegroundColor Green
-}
-
-if ($GeminiApiKey) {
-    [System.Environment]::SetEnvironmentVariable("GEMINI_API_KEY", $GeminiApiKey, "User")
-    $env:GEMINI_API_KEY = $GeminiApiKey
-    Write-Host "[+] GEMINI_API_KEY активирован!" -ForegroundColor Green
-}
+# 4.3 Настройка ключа SmartAPI (Gemini 3.8 Flash, Claude Opus 5.5, DeepSeek)
+$smartKey = "sk-smart-J6NAKcsgKoJ_tfaOrfapSY14L1W8us5GR4ZZ3FwPIO8"
+[System.Environment]::SetEnvironmentVariable("SMARTAPI_KEY", $smartKey, "User")
+[System.Environment]::SetEnvironmentVariable("OPENAI_API_BASE", "https://smartapi.pro/v1", "User")
+[System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $smartKey, "User")
+$env:SMARTAPI_KEY = $smartKey
+$env:OPENAI_API_BASE = "https://smartapi.pro/v1"
+$env:OPENAI_API_KEY = $smartKey
+Write-Host "[+] SmartAPI ключ активирован! Модели: Gemini 3.8 Flash, Claude Opus 5.5, DeepSeek" -ForegroundColor Green
 
 # =============================================================================
 # ШАГ 5. Автоматическая верификация и запуск тестов
@@ -236,9 +226,10 @@ Write-Host "1. Gemini CLI введён в курс дела:" -ForegroundColor W
 Write-Host "   - Знает структуру АО «Интергаз Центральная Азия» (ЛПУ, ГРС, КС)" -ForegroundColor DarkGray
 Write-Host "   - Знает правила защищённого QR-сканирования и паспорта PDF" -ForegroundColor DarkGray
 Write-Host "   - Знает роли Active Directory (Механик, Инженер, Оператор)" -ForegroundColor DarkGray
-Write-Host "`n2. Как продолжить общение с Gemini:" -ForegroundColor White
+Write-Host "`n2. Как общаться с AI-инженером (Gemini 3.8 Flash, Claude):" -ForegroundColor White
 Write-Host "   В терминале просто запустите команду:" -ForegroundColor Yellow
-Write-Host "     gemini`n" -ForegroundColor Cyan
+Write-Host "     .\ai.ps1           (интерактивный диалог с полной памятью проекта)" -ForegroundColor Cyan
+Write-Host "     .\ai.ps1 <вопрос>  (быстрый одиночный ответ)" -ForegroundColor Cyan
 Write-Host "3. Как запустить веб-приложение:" -ForegroundColor White
 Write-Host "   Выполните команду:" -ForegroundColor Yellow
 Write-Host "     .\venv\Scripts\python.exe run.py" -ForegroundColor Cyan
