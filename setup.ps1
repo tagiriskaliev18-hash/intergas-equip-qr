@@ -1,5 +1,4 @@
-﻿# Мастер развертывания проекта и настройки Gemini на рабочем компьютере
-# АО «Интергаз Центральная Азия»
+﻿# Master setup for AO Intergas Central Asia (Admin Mode)
 param([Parameter(ValueFromRemainingArguments = $true)]$allArgs)
-$ScriptPath = Join-Path $PSScriptRoot "scripts\setup_workstation.ps1"
+$ScriptPath = Join-Path $PSScriptRoot "scripts\setup_admin.ps1"
 & powershell.exe -ExecutionPolicy Bypass -NoProfile -File $ScriptPath @allArgs

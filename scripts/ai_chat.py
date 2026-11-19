@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
 """
-Интерактивный терминальный AI-ассистент для АО «Интергаз Центральная Азия».
-Работает через SmartAPI шлюз с моделями Gemini, Claude, DeepSeek.
-Автоматически считывает GEMINI.md и обладает полной памятью проекта.
+Автономный терминальный AI-ассистент с полным доступом к ПК для АО «Интергаз Центральная Азия».
+Шлюз: SmartAPI (https://smartapi.pro/v1). Модели: gemini-3.8-flash, claude-opus-5-5, deepseek-v4-pro.
 
-Запуск:
-    python scripts/ai_chat.py
-    python scripts/ai_chat.py "ваш вопрос"
+Агент РЕАЛЬНО может выполнять команды на компьютере, читать/изменять файлы (.env, код, тесты)
+и диагностировать Active Directory.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
-# Параметры SmartAPI
 DEFAULT_API_KEY = os.getenv("SMARTAPI_KEY", "sk-smart-J6NAKcsgKoJ_tfaOrfapSY14L1W8us5GR4ZZ3FwPIO8")
 DEFAULT_BASE_URL = os.getenv("SMARTAPI_BASE_URL", "https://smartapi.pro/v1").rstrip("/")
 DEFAULT_MODEL = os.getenv("SMARTAPI_MODEL", "gemini-3.8-flash")
@@ -35,14 +34,30 @@ AVAILABLE_MODELS = [
 
 
 def load_project_memory() -> str:
-    """Загружает базу знаний проекта из GEMINI.md"""
+    """Загружает базу знаний проекта из GEMINI.md и добавляет инструкции агента по ПК."""
+    env_file = ROOT_DIR / ".env"
+    base_instructions = f"""Ты — автономный AI-инженер проекта АО «Интергаз Центральная Азия» (ЛПУ, ГРС, КС).
+У ТЕБЯ ЕСТЬ ПОЛНЫЙ ДОСТУП К КОМПЬЮТЕРУ ПОЛЬЗОВАТЕЛЯ.
+Рабочая папка проекта: {ROOT_DIR}
+Файл настроек Active Directory: {env_file}
+
+Правила выполнения действий на компьютере:
+1. Чтобы выполнить команду в терминале (PowerShell/CMD), найти файл, прочитать файл, отредактировать .env, запустить python или проверить Active Directory, напиши блок кода:
+```powershell
+твоя команда
+```
+или используй вызов инструмента.
+Система выполнит твою команду на ПК и вернёт тебе вывод.
+2. Когда результат получен, объясни пользователю всё на чистом русском языке.
+3. Главное правило предприятия: ПОЛНОЕ ОТСУТСТВИЕ СУММ И ЦЕН В БЮДЖЕТЕ. Только физические единицы (дни, часы, шт., комплекты, литры) и количество открытых дефектов."""
+
     gemini_md = ROOT_DIR / "GEMINI.md"
     if gemini_md.exists():
         try:
-            return gemini_md.read_text(encoding="utf-8")
+            return base_instructions + "\n\n" + gemini_md.read_text(encoding="utf-8")
         except Exception:
             pass
-    return "Ты — ведущий AI-инженер проекта паспортизации оборудования АО «Интергаз Центральная Азия» (ЛПУ, ГРС, КС)."
+    return base_instructions
 
 
 def call_smartapi(
@@ -51,7 +66,7 @@ def call_smartapi(
     api_key: str = DEFAULT_API_KEY,
     base_url: str = DEFAULT_BASE_URL,
     max_tokens: int = 2048,
-    temperature: float = 0.5,
+    temperature: float = 0.3,
 ) -> str:
     url = f"{base_url}/chat/completions"
     payload = {
@@ -85,6 +100,86 @@ def call_smartapi(
         return f"[-] Ошибка соединения со SmartAPI: {e}"
 
 
+def extract_command(text: str) -> str:
+    """Извлекает команду PowerShell/Bash/DSML из ответа модели."""
+    # 1. Формат DSML: <| DSML | | parameter name="command"...>CMD</...
+    dsml = re.search(r'parameter\s+name=["\']command["\'][^>]*>(.*?)</', text, re.DOTALL)
+    if dsml:
+        return dsml.group(1).strip()
+
+    # 2. Формат ```powershell или ```bash или ```cmd
+    code = re.search(r'```(?:powershell|pwsh|cmd|bash|sh)?\s*\n(.*?)```', text, re.DOTALL)
+    if code:
+        candidate = code.group(1).strip()
+        return candidate
+
+    return ""
+
+
+def run_host_command(command: str) -> str:
+    """Выполняет команду на локальном компьютере и возвращает вывод."""
+    # Заменяем linux-специфичные команды на аналоги Windows если нужно
+    cmd = command
+    if cmd.startswith("ls -a"):
+        cmd = "dir -Force"
+    elif cmd.startswith("pwd"):
+        cmd = "Get-Location"
+
+    try:
+        proc = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            encoding="utf-8",
+            errors="replace",
+        )
+        out = proc.stdout.strip()
+        err = proc.stderr.strip()
+        result = []
+        if out:
+            result.append(out)
+        if err:
+            result.append(f"[stderr]: {err}")
+        return "\n".join(result) if result else "(Команда выполнена успешно, вывод пуст)"
+    except subprocess.TimeoutExpired:
+        return "[-] Ошибка: Команда превысила таймаут выполнения (30 сек)."
+    except Exception as e:
+        return f"[-] Ошибка выполнения команды: {e}"
+
+
+def execute_agent_loop(
+    conversation: list[dict[str, str]],
+    model: str,
+    api_key: str,
+    max_steps: int = 4,
+) -> str:
+    """Автономный цикл Агента: вопрос -> команда на ПК -> результат ПК -> ответ."""
+    step = 0
+    while step < max_steps:
+        step += 1
+        reply = call_smartapi(conversation, model=model, api_key=api_key)
+
+        cmd = extract_command(reply)
+        if cmd:
+            print(f"\n\033[1;33m[AI выполняет на ПК]:\033[0m {cmd}")
+            cmd_output = run_host_command(cmd)
+            # Показываем превью вывода
+            preview = cmd_output[:300] + ("..." if len(cmd_output) > 300 else "")
+            print(f"\033[1;30m[Результат ПК]:\033[0m {preview}\n")
+
+            conversation.append({"role": "assistant", "content": reply})
+            conversation.append({
+                "role": "user",
+                "content": f"[Результат выполнения команды на компьютере пользователя]:\n{cmd_output}\n\nПроанализируй вывод и дай ответ пользователю на русском языке."
+            })
+        else:
+            return reply
+
+    return reply
+
+
 def interactive_loop(model: str = DEFAULT_MODEL, api_key: str = DEFAULT_API_KEY):
     system_prompt = load_project_memory()
     conversation: list[dict[str, str]] = [
@@ -92,11 +187,12 @@ def interactive_loop(model: str = DEFAULT_MODEL, api_key: str = DEFAULT_API_KEY)
     ]
 
     print("=" * 72)
-    print(" АО «ИНТЕРГАЗ ЦЕНТРАЛЬНАЯ АЗИЯ» // ТЕРМИНАЛЬНЫЙ AI-ИНЖЕНЕР")
-    print(f" Подключено через SmartAPI | Активная модель: {model}")
-    print(" База знаний проекта (GEMINI.md) загружена в память.")
+    print(" АО «ИНТЕРГАЗ ЦЕНТРАЛЬНАЯ АЗИЯ» // АВТОНОМНЫЙ AI-ИНЖЕНЕР")
+    print(f" Шлюз: SmartAPI | Активная модель: {model}")
+    print(f" Рабочая папка: {ROOT_DIR}")
+    print(" Агент имеет ДОСТУП К ПК: может сам читать файлы, менять .env и запускать тесты!")
     print("=" * 72)
-    print("Команды: /model <имя> (сменить модель) | /clear (очистить историю) | exit (выход)\n")
+    print("Команды: /env (открыть .env) | /model <имя> | /clear | exit\n")
 
     current_model = model
 
@@ -119,6 +215,12 @@ def interactive_loop(model: str = DEFAULT_MODEL, api_key: str = DEFAULT_API_KEY)
             print("[+] Контекст очищен.\n")
             continue
 
+        if user_input.lower() == "/env":
+            env_path = ROOT_DIR / ".env"
+            subprocess.Popen(["notepad.exe", str(env_path)])
+            print(f"[+] Открыт {env_path} в Блокноте.\n")
+            continue
+
         if user_input.startswith("/model"):
             parts = user_input.split(maxsplit=1)
             if len(parts) > 1 and parts[1].strip():
@@ -126,21 +228,20 @@ def interactive_loop(model: str = DEFAULT_MODEL, api_key: str = DEFAULT_API_KEY)
                 print(f"[+] Модель переключена на: {current_model}\n")
             else:
                 print(f"Текущая модель: {current_model}")
-                print(f"Доступные модели: {', '.join(AVAILABLE_MODELS)}\n")
+                print(f"Доступные: {', '.join(AVAILABLE_MODELS)}\n")
             continue
 
         conversation.append({"role": "user", "content": user_input})
-        print(f"\033[1;35mGemini ({current_model}) думает...\033[0m", end="\r")
+        print(f"\033[1;35mИнженер анализирует...\033[0m", end="\r")
 
-        answer = call_smartapi(conversation, model=current_model, api_key=api_key)
-        # Стираем индикатор
+        answer = execute_agent_loop(conversation, model=current_model, api_key=api_key)
         print(" " * 50, end="\r")
         print(f"\033[1;32mИнженер:\033[0m\n{answer}\n")
         conversation.append({"role": "assistant", "content": answer})
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Терминальный AI-ассистент через SmartAPI")
+    parser = argparse.ArgumentParser(description="Автономный AI-ассистент с доступом к ПК")
     parser.add_argument("prompt", nargs="?", default="", help="Одиночный вопрос к модели")
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Имя модели (по умолчанию {DEFAULT_MODEL})")
     parser.add_argument("--key", default=DEFAULT_API_KEY, help="SmartAPI ключ")
@@ -148,16 +249,14 @@ def main():
     args = parser.parse_args()
 
     if args.prompt:
-        # Одиночный быстрый запрос
         system_prompt = load_project_memory()
         msgs = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": args.prompt},
         ]
-        res = call_smartapi(msgs, model=args.model, api_key=args.key)
+        res = execute_agent_loop(msgs, model=args.model, api_key=args.key)
         print(res)
     else:
-        # Интерактивный диалог
         interactive_loop(model=args.model, api_key=args.key)
 
 
