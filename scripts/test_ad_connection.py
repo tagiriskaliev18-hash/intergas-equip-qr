@@ -105,17 +105,17 @@ def run_diagnostics(
     print(f"[3/4] Проверка авторизации Bind...")
     if bind_dn and bind_password:
         try:
-            conn = Connection(server, user=bind_dn, password=bind_password, auto_bind=True, timeout=5)
+            conn = Connection(server, user=bind_dn, password=bind_password, auto_bind=True)
             print("[+] УСПЕХ: Сервисная учётная запись успешно прошла Bind в Active Directory!")
             if server.info and server.info.naming_contexts:
                 print(f"    Контексты именования домена: {', '.join(server.info.naming_contexts)}")
         except Exception as e:
             print(f"[-] ОШИБКА BIND: Не удалось войти под сервисной учёткой: {e}")
-            print("    Рекомендация: Проверьте точность DN сервисной учетки и пароль.")
+            print("    Рекомендация: Проверьте точность логина (UPN или DN) и пароль.")
             return 4
     else:
         try:
-            conn = Connection(server, auto_bind=True, timeout=5)
+            conn = Connection(server, auto_bind=True)
             print("[+] УСПЕХ: Анонимный Bind успешен.")
         except Exception as e:
             print(f"[!] Анонимный Bind отклонён (стандартная политика безопасности Windows Server AD): {e}")
