@@ -3,16 +3,20 @@
 для АО «Интергаз Центральная Азия».
 
 Реализует:
-1. Прямую аутентификацию сотрудников по доменным учётным записям (sAMAccountName, UPN).
-2. Чтение атрибутов пользователя (ФИО, E-mail, членство в доменных группах безопасности memberOf).
-3. Сопоставление доменных групп AD с ролями системы (admin, engineer, operator).
-4. Проверку сетевого соединения и диагностику связи с контроллером домена.
+1. Прямую аутентификацию сотрудников по доменным учётным записям (sAMAccountName, UPN, NetBIOS) в реальном времени.
+2. Автоматический отзыв доступа: при удалении или блокировке человека в AD вход в приложение блокируется мгновенно.
+3. Сопоставление доменных групп AD с ролями системы:
+   - GG_ICA_Mechanics / Domain Admins -> admin (Главный механик: паспортизация, QR)
+   - GG_ICA_Engineers -> engineer (Сменный инженер: ТО, дефекты)
+   - Любой сотрудник Active Directory предприятия -> operator (Просмотр оборудования, паспортов и графиков)
 """
 from __future__ import annotations
 
+import inspect
 import logging
 import ssl
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 try:
     import ldap3
@@ -28,19 +32,19 @@ from app import config
 logger = logging.getLogger(__name__)
 
 
-def clean_username(raw_username: str, default_domain: str = "intergas.kz") -> tuple[str, str]:
+def clean_username(raw_username: str, default_domain: str = "ica.kz") -> tuple[str, str]:
     """
     Нормализует логин сотрудника:
-    - 'INTERGAS\\a.sarsembayev' -> ('a.sarsembayev', 'a.sarsembayev@intergas.kz')
-    - 'a.sarsembayev@intergas.kz' -> ('a.sarsembayev', 'a.sarsembayev@intergas.kz')
-    - 'a.sarsembayev' -> ('a.sarsembayev', 'a.sarsembayev@intergas.kz')
+    - 'ICA\\a.sarsembayev' -> ('a.sarsembayev', 'a.sarsembayev@ica.kz')
+    - 'a.sarsembayev@ica.kz' -> ('a.sarsembayev', 'a.sarsembayev@ica.kz')
+    - 'a.sarsembayev' -> ('a.sarsembayev', 'a.sarsembayev@ica.kz')
     """
+    domain = default_domain or config.AD_DOMAIN or "ica.kz"
     clean = raw_username.strip()
     if "\\" in clean:
         parts = clean.split("\\", 1)
         sam = parts[1].strip()
-        domain = parts[0].strip().lower()
-        upn = f"{sam}@{default_domain}"
+        upn = f"{sam}@{domain}"
         return sam, upn
 
     if "@" in clean:
@@ -50,21 +54,8 @@ def clean_username(raw_username: str, default_domain: str = "intergas.kz") -> tu
         return sam, upn
 
     sam = clean
-    upn = f"{sam}@{default_domain}"
+    upn = f"{sam}@{domain}"
     return sam, upn
-
-
-def normalize_bind_user(bind_user: str, default_domain: str = "ica.kz") -> str:
-    """
-    Приводит сервисный логин к подходящему для Active Directory виду.
-    """
-    u = bind_user.strip()
-    if not u:
-        return ""
-    if "=" in u or "@" in u or "\\" in u:
-        return u
-    domain = default_domain or config.AD_DOMAIN or "ica.kz"
-    return f"{u}@{domain}"
 
 
 def get_bind_candidates(bind_user: str, default_domain: str = "ica.kz") -> list[str]:
@@ -96,9 +87,50 @@ def get_bind_candidates(bind_user: str, default_domain: str = "ica.kz") -> list[
     else:
         candidates.append(f"{u}@{domain}")
         candidates.append(f"{netbios}\\{u}")
+        candidates.append(u)
 
-    # Убираем дубликаты с сохранением порядка
     return list(dict.fromkeys(candidates))
+
+
+def normalize_bind_user(bind_user: str, default_domain: str = "ica.kz") -> str:
+    candidates = get_bind_candidates(bind_user, default_domain)
+    return candidates[0] if candidates else ""
+
+
+def _parse_server_endpoint(server_uri: str, use_ssl: Optional[bool] = None) -> tuple[str, int, bool]:
+    """
+    Надёжно разбирает адрес контроллера домена:
+    'ldaps://srv-dc-url1.ica.kz:636' -> ('srv-dc-url1.ica.kz', 636, True)
+    'srv-dc-url1.ica.kz' -> ('srv-dc-url1.ica.kz', 636 if use_ssl else 389, use_ssl)
+    """
+    raw = server_uri.strip()
+    parsed = urlparse(raw if "://" in raw else f"ldap://{raw}")
+    host = parsed.hostname or raw
+    is_ssl = use_ssl if use_ssl is not None else (parsed.scheme == "ldaps" or parsed.port == 636 or config.AD_USE_SSL)
+    port = parsed.port or (636 if is_ssl else 389)
+    return host, port, is_ssl
+
+
+def _create_ldap_connection(server: Server, user: Optional[str] = None, password: Optional[str] = None, timeout: float = 4.0) -> Connection:
+    """
+    Совместимое создание LDAP Connection для любых версий ldap3 без падений на аргументе timeout.
+    """
+    kwargs: dict[str, Any] = {"auto_bind": True}
+    try:
+        params = inspect.signature(Connection.__init__).parameters
+        if "receive_timeout" in params:
+            kwargs["receive_timeout"] = timeout
+        elif "timeout" in params:
+            kwargs["timeout"] = timeout
+    except Exception:
+        pass
+
+    conn = Connection(server, user=user, password=password, **kwargs)
+    try:
+        conn.receive_timeout = timeout
+    except Exception:
+        pass
+    return conn
 
 
 def test_ad_connection(
@@ -110,7 +142,7 @@ def test_ad_connection(
 ) -> dict[str, Any]:
     """
     Проверяет сетевую доступность контроллера домена Active Directory
-    и корректность сервисной учётной записи (Bind).
+    и корректность авторизации (Bind) в реальном времени.
     """
     if not HAS_LDAP3:
         return {
@@ -120,15 +152,13 @@ def test_ad_connection(
         }
 
     srv_uri = server_uri or config.AD_SERVER
-    ssl_active = use_ssl if use_ssl is not None else (config.AD_USE_SSL or srv_uri.startswith("ldaps://"))
+    host, port, ssl_active = _parse_server_endpoint(srv_uri, use_ssl)
 
     try:
-        tls_config = None
-        if ssl_active:
-            tls_config = Tls(validate=ssl.CERT_NONE)
-
+        tls_config = Tls(validate=ssl.CERT_NONE) if ssl_active else None
         server = Server(
-            srv_uri,
+            host=host,
+            port=port,
             use_ssl=ssl_active,
             tls=tls_config,
             get_info=ALL,
@@ -138,7 +168,7 @@ def test_ad_connection(
         b_dn = bind_dn or config.AD_BIND_DN
         b_pwd = bind_password or config.AD_BIND_PASSWORD
 
-        # Если задана сервисная учётная запись — проверяем Bind перебором форматов (UPN, NetBIOS, sAM)
+        # Если задана учётная запись — проверяем Bind перебором UPN / NetBIOS
         if b_dn and b_pwd:
             conn = None
             last_err = None
@@ -147,7 +177,7 @@ def test_ad_connection(
 
             for candidate in candidates:
                 try:
-                    conn = Connection(server, user=candidate, password=b_pwd, auto_bind=True, timeout=timeout)
+                    conn = _create_ldap_connection(server, user=candidate, password=b_pwd, timeout=timeout)
                     used_user = candidate
                     break
                 except Exception as ex:
@@ -155,9 +185,11 @@ def test_ad_connection(
                     continue
 
             if not conn:
-                raise last_err or Exception(f"Не удалось войти под учетной записью {b_dn}")
+                raise last_err or Exception(f"Не удалось войти в Active Directory под учетной записью {b_dn}")
 
             server_info = {
+                "host": host,
+                "port": port,
                 "naming_contexts": list(server.info.naming_contexts) if server.info else [],
                 "vendor": "Microsoft Active Directory",
                 "ssl": ssl_active,
@@ -166,145 +198,139 @@ def test_ad_connection(
             conn.unbind()
             return {
                 "success": True,
-                "message": f"Успешное подключение и авторизация в Active Directory как {used_user} на {srv_uri}",
-                "server": srv_uri,
+                "message": f"Успешное подключение и авторизация в Active Directory как {used_user} на {host}:{port}",
+                "server": f"{host}:{port}",
                 "info": server_info,
             }
 
-        # Анонимная проверка доступности сокета/порта
-        conn = Connection(server, auto_bind=True, timeout=timeout)
+        # Анонимная проверка сокета/порта
+        conn = _create_ldap_connection(server, timeout=timeout)
         conn.unbind()
         return {
             "success": True,
-            "message": f"Порт контроллера домена {srv_uri} доступен по сети (Bind не проверялся, т.к. учетка не задана).",
-            "server": srv_uri,
+            "message": f"Порт контроллера домена {host}:{port} открыт и отвечает.",
+            "server": f"{host}:{port}",
         }
 
     except Exception as e:
-        logger.warning("Ошибка проверки подключения к Active Directory (%s): %s", srv_uri, e)
+        logger.warning("Ошибка подключения к Active Directory (%s:%s): %s", host, port, e)
         return {
             "success": False,
             "error": str(e),
-            "server": srv_uri,
-            "help": "Проверьте сетевой доступ к порту 389/636, доступность DNS контроллера домена и параметры Bind DN.",
+            "server": f"{host}:{port}",
+            "help": "Проверьте сетевой доступ к порту 389/636, DNS контроллера домена и пароль учетной записи.",
         }
 
 
 def _map_ad_groups_to_roles(member_of_list: list[str]) -> tuple[list[str], str]:
     """
-    Сопоставляет доменные группы безопасности AD с ролями приложения.
+    Сопоставляет группы безопасности Active Directory с ролями комплекса:
+    1. GG_ICA_Mechanics / Domain Admins -> admin (Главный механик)
+    2. GG_ICA_Engineers -> engineer (Сменный инженер)
+    3. Любой сотрудник предприятия АО «Интергаз Центральная Азия» -> operator (Просмотр оборудования)
     """
     roles: list[str] = []
     groups_lower = [g.lower() for g in member_of_list]
 
-    # Проверка на администратора (Главный механик)
     admin_group = config.AD_GROUP_ADMIN.lower()
     if any(admin_group in g or "domain admins" in g or "администраторы домена" in g for g in groups_lower):
         roles.append("admin")
         roles.append("engineer")
 
-    # Проверка на инженера ТО / мастера
     engineer_group = config.AD_GROUP_ENGINEER.lower()
     if any(engineer_group in g for g in groups_lower):
         if "engineer" not in roles:
             roles.append("engineer")
 
-    # Проверка на оператора
     operator_group = config.AD_GROUP_OPERATOR.lower()
     if any(operator_group in g for g in groups_lower):
         if "operator" not in roles:
             roles.append("operator")
 
-    # Если сотрудник состоит в домене, но в явных группах не указан — выдаём роль оператора (безопасный просмотр)
+    # ГЛАВНОЕ ПРАВИЛО: любой доменный сотрудник компании получает безопасный доступ на просмотр (роль operator)
     if not roles:
         roles = ["operator"]
 
-    # Определяем понятный русский титул роли
     if "admin" in roles:
         role_label = "Главный механик (AD: Администратор)"
     elif "engineer" in roles:
         role_label = "Инженер ТО и диагностики (AD)"
     else:
-        role_label = "Оператор оборудования (AD: Наблюдатель)"
+        role_label = "Оператор оборудования (AD: Сотрудник предприятия)"
 
     return roles, role_label
 
 
 def authenticate_ad_user(username: str, password: str) -> Optional[dict[str, Any]]:
     """
-    Выполняет аутентификацию сотрудника АО «Интергаз Центральная Азия»
-    непосредственно в Active Directory.
+    ЖИВАЯ АУТЕНТИФИКАЦИЯ В ACTIVE DIRECTORY (БЕЗ ЛОКАЛЬНЫХ ПАРОЛЕЙ).
 
-    Возвращает словарь данных пользователя или None при неверном пароле/ошибке.
+    Каждый вход проверяется непосредственно на контроллере домена.
+    Если пользователь удалён, заблокирован или истёк срок действия пароля в AD,
+    он немедленно лишается доступа к приложению.
     """
     if not HAS_LDAP3:
-        logger.error("Попытка аутентификации через AD, но ldap3 не установлен")
+        logger.error("ldap3 не установлен")
         return None
 
     if not config.AD_ENABLED or not password.strip():
         return None
 
     sam_name, upn_name = clean_username(username, default_domain=config.AD_DOMAIN)
-
-    srv_uri = config.AD_SERVER
-    ssl_active = config.AD_USE_SSL or srv_uri.startswith("ldaps://")
+    host, port, ssl_active = _parse_server_endpoint(config.AD_SERVER, config.AD_USE_SSL)
 
     try:
         tls_config = Tls(validate=ssl.CERT_NONE) if ssl_active else None
         server = Server(
-            srv_uri,
+            host=host,
+            port=port,
             use_ssl=ssl_active,
             tls=tls_config,
             get_info=ALL,
             connect_timeout=3,
         )
 
-        # 1. Проверяем подлинность пароля пользователя через User Bind
+        # 1. Живой Bind пользователя (пароль нигде не сохраняется)
         user_bind_success = False
         user_conn = None
 
-        # Пробуем UPN (user@intergas.kz)
-        try:
-            user_conn = Connection(server, user=upn_name, password=password, auto_bind=True, timeout=3)
-            user_bind_success = True
-        except Exception as e_upn:
-            logger.debug("Bind по UPN '%s' не удался: %s", upn_name, e_upn)
-
-        # Если не вышло — пробуем DOMAIN\username
-        if not user_bind_success:
-            domain_prefix = config.AD_DOMAIN.split(".")[0].upper()
-            downlevel_name = f"{domain_prefix}\\{sam_name}"
+        candidates = get_bind_candidates(username, config.AD_DOMAIN)
+        for candidate in candidates:
             try:
-                user_conn = Connection(server, user=downlevel_name, password=password, auto_bind=True, timeout=3)
+                user_conn = _create_ldap_connection(server, user=candidate, password=password, timeout=3)
                 user_bind_success = True
-            except Exception as e_downlevel:
-                logger.debug("Bind по Downlevel '%s' не удался: %s", downlevel_name, e_downlevel)
+                break
+            except Exception:
+                continue
 
         if not user_bind_success or not user_conn:
-            logger.info("Неудачная попытка входа в AD для пользователя '%s'", sam_name)
+            logger.info("Неудачная попытка входа в Active Directory для '%s'", sam_name)
             return None
 
-        # 2. Извлекаем атрибуты пользователя (ФИО, почту, memberOf)
-        # Если есть сервисная учётка — используем её, иначе читаем через текущее соединение
+        # 2. Чтение атрибутов и групп сотрудника
         read_conn = user_conn
         if config.AD_BIND_DN and config.AD_BIND_PASSWORD:
-            svc_bind_user = normalize_bind_user(config.AD_BIND_DN, config.AD_DOMAIN)
-            try:
-                svc_conn = Connection(server, user=svc_bind_user, password=config.AD_BIND_PASSWORD, auto_bind=True, timeout=3)
-                read_conn = svc_conn
-            except Exception as e_svc:
-                logger.warning("Не удалось открыть сервисное соединение AD (%s), читаем через пользователя: %s", svc_bind_user, e_svc)
+            for svc_candidate in get_bind_candidates(config.AD_BIND_DN, config.AD_DOMAIN):
+                try:
+                    svc_conn = _create_ldap_connection(server, user=svc_candidate, password=config.AD_BIND_PASSWORD, timeout=3)
+                    read_conn = svc_conn
+                    break
+                except Exception:
+                    pass
 
-        search_base = config.AD_BASE_DN
+        search_base = config.AD_BASE_DN or "DC=ica,DC=kz"
         search_filter = f"(&(objectCategory=person)(objectClass=user)(sAMAccountName={sam_name}))"
         attributes = ["sAMAccountName", "displayName", "cn", "mail", "memberOf", "userPrincipalName", "objectGUID"]
 
-        read_conn.search(
-            search_base=search_base,
-            search_filter=search_filter,
-            search_scope=ldap3.SUBTREE,
-            attributes=attributes,
-        )
+        try:
+            read_conn.search(
+                search_base=search_base,
+                search_filter=search_filter,
+                search_scope=ldap3.SUBTREE,
+                attributes=attributes,
+            )
+        except Exception as e_search:
+            logger.warning("Ошибка поиска пользователя %s: %s", sam_name, e_search)
 
         display_name = sam_name
         email = f"{sam_name}@{config.AD_DOMAIN}"
@@ -320,47 +346,33 @@ def authenticate_ad_user(username: str, password: str) -> Optional[dict[str, Any
 
             if "mail" in entry and entry.mail.value:
                 email = str(entry.mail.value)
-            elif "userPrincipalName" in entry and entry.userPrincipalName.value:
-                email = str(entry.userPrincipalName.value)
 
             if "memberOf" in entry and entry.memberOf.values:
                 member_of = [str(g) for g in entry.memberOf.values]
 
             if "objectGUID" in entry and entry.objectGUID.value:
-                guid_str = f"ad-{entry.objectGUID.value}"
+                guid_str = str(entry.objectGUID.value)
 
-        # Закрываем соединения
+        roles, role_label = _map_ad_groups_to_roles(member_of)
+
         try:
             user_conn.unbind()
         except Exception:
             pass
-        if read_conn is not user_conn:
-            try:
-                read_conn.unbind()
-            except Exception:
-                pass
-
-        # 3. Сопоставляем роли
-        roles, role_label = _map_ad_groups_to_roles(member_of)
-
-        logger.info(
-            "Успешная AD-аутентификация: пользователь '%s' (%s), роли: %s",
-            sam_name, display_name, roles
-        )
 
         return {
-            "sub": guid_str,
+            "id": guid_str,
             "username": sam_name,
             "name": display_name,
             "email": email,
             "roles": roles,
+            "role": roles[0],
             "role_label": role_label,
-            "is_admin": "admin" in roles,
-            "is_engineer": "engineer" in roles or "admin" in roles,
-            "member_of": member_of,
-            "auth_source": "Active Directory (LDAP)",
+            "ad_groups": member_of,
+            "auth_source": "active_directory",
+            "is_ad_user": True,
         }
 
     except Exception as e:
-        logger.exception("Исключение при взаимодействии с Active Directory для '%s': %s", sam_name, e)
+        logger.error("Критический сбой аутентификации в Active Directory: %s", e)
         return None
