@@ -54,6 +54,22 @@ def clean_username(raw_username: str, default_domain: str = "intergas.kz") -> tu
     return sam, upn
 
 
+def normalize_bind_user(bind_user: str, default_domain: str = "intergas.kz") -> str:
+    """
+    Приводит сервисный логин к подходящему для Active Directory виду:
+    - 'CN=svc,OU=...' -> без изменений (Distinguished Name)
+    - 'svc@intergas.kz' -> без изменений (UPN)
+    - 'INTERGAS\\svc' -> без изменений (Downlevel)
+    - 'svc' -> 'svc@intergas.kz' (автоматически дополняет UPN домена)
+    """
+    u = bind_user.strip()
+    if not u:
+        return ""
+    if "=" in u or "@" in u or "\\" in u:
+        return u
+    return f"{u}@{default_domain}"
+
+
 def test_ad_connection(
     server_uri: Optional[str] = None,
     bind_dn: Optional[str] = None,
@@ -88,7 +104,7 @@ def test_ad_connection(
             connect_timeout=timeout,
         )
 
-        b_dn = bind_dn or config.AD_BIND_DN
+        b_dn = normalize_bind_user(bind_dn or config.AD_BIND_DN, config.AD_DOMAIN)
         b_pwd = bind_password or config.AD_BIND_PASSWORD
 
         # Если задана сервисная учётная запись — проверяем Bind
@@ -224,11 +240,12 @@ def authenticate_ad_user(username: str, password: str) -> Optional[dict[str, Any
         # Если есть сервисная учётка — используем её, иначе читаем через текущее соединение
         read_conn = user_conn
         if config.AD_BIND_DN and config.AD_BIND_PASSWORD:
+            svc_bind_user = normalize_bind_user(config.AD_BIND_DN, config.AD_DOMAIN)
             try:
-                svc_conn = Connection(server, user=config.AD_BIND_DN, password=config.AD_BIND_PASSWORD, auto_bind=True, timeout=3)
+                svc_conn = Connection(server, user=svc_bind_user, password=config.AD_BIND_PASSWORD, auto_bind=True, timeout=3)
                 read_conn = svc_conn
             except Exception as e_svc:
-                logger.warning("Не удалось открыть сервисное соединение AD (%s), читаем через пользователя: %s", config.AD_BIND_DN, e_svc)
+                logger.warning("Не удалось открыть сервисное соединение AD (%s), читаем через пользователя: %s", svc_bind_user, e_svc)
 
         search_base = config.AD_BASE_DN
         search_filter = f"(&(objectCategory=person)(objectClass=user)(sAMAccountName={sam_name}))"
