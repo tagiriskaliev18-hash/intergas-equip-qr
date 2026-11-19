@@ -54,20 +54,51 @@ def clean_username(raw_username: str, default_domain: str = "intergas.kz") -> tu
     return sam, upn
 
 
-def normalize_bind_user(bind_user: str, default_domain: str = "intergas.kz") -> str:
+def normalize_bind_user(bind_user: str, default_domain: str = "ica.kz") -> str:
     """
-    Приводит сервисный логин к подходящему для Active Directory виду:
-    - 'CN=svc,OU=...' -> без изменений (Distinguished Name)
-    - 'svc@intergas.kz' -> без изменений (UPN)
-    - 'INTERGAS\\svc' -> без изменений (Downlevel)
-    - 'svc' -> 'svc@intergas.kz' (автоматически дополняет UPN домена)
+    Приводит сервисный логин к подходящему для Active Directory виду.
     """
     u = bind_user.strip()
     if not u:
         return ""
     if "=" in u or "@" in u or "\\" in u:
         return u
-    return f"{u}@{default_domain}"
+    domain = default_domain or config.AD_DOMAIN or "ica.kz"
+    return f"{u}@{domain}"
+
+
+def get_bind_candidates(bind_user: str, default_domain: str = "ica.kz") -> list[str]:
+    """
+    Формирует список вариантов логина для подключения к Active Directory (DN, UPN, NetBIOS):
+    1. Исходный (например: dev_svc@ica.kz или CN=dev_svc,OU=...)
+    2. UPN: login@ica.kz
+    3. NetBIOS: ICA\\login
+    4. sAMAccountName: login
+    """
+    u = bind_user.strip()
+    if not u:
+        return []
+    domain = default_domain or config.AD_DOMAIN or "ica.kz"
+    netbios = domain.split(".")[0].upper()
+
+    candidates = [u]
+    if "=" in u:
+        return candidates
+
+    if "@" in u:
+        sam = u.split("@")[0].strip()
+        candidates.append(f"{netbios}\\{sam}")
+        candidates.append(sam)
+    elif "\\" in u:
+        sam = u.split("\\")[-1].strip()
+        candidates.append(f"{sam}@{domain}")
+        candidates.append(sam)
+    else:
+        candidates.append(f"{u}@{domain}")
+        candidates.append(f"{netbios}\\{u}")
+
+    # Убираем дубликаты с сохранением порядка
+    return list(dict.fromkeys(candidates))
 
 
 def test_ad_connection(
@@ -104,21 +135,38 @@ def test_ad_connection(
             connect_timeout=timeout,
         )
 
-        b_dn = normalize_bind_user(bind_dn or config.AD_BIND_DN, config.AD_DOMAIN)
+        b_dn = bind_dn or config.AD_BIND_DN
         b_pwd = bind_password or config.AD_BIND_PASSWORD
 
-        # Если задана сервисная учётная запись — проверяем Bind
+        # Если задана сервисная учётная запись — проверяем Bind перебором форматов (UPN, NetBIOS, sAM)
         if b_dn and b_pwd:
-            conn = Connection(server, user=b_dn, password=b_pwd, auto_bind=True, timeout=timeout)
+            conn = None
+            last_err = None
+            candidates = get_bind_candidates(b_dn, config.AD_DOMAIN)
+            used_user = b_dn
+
+            for candidate in candidates:
+                try:
+                    conn = Connection(server, user=candidate, password=b_pwd, auto_bind=True, timeout=timeout)
+                    used_user = candidate
+                    break
+                except Exception as ex:
+                    last_err = ex
+                    continue
+
+            if not conn:
+                raise last_err or Exception(f"Не удалось войти под учетной записью {b_dn}")
+
             server_info = {
                 "naming_contexts": list(server.info.naming_contexts) if server.info else [],
                 "vendor": "Microsoft Active Directory",
                 "ssl": ssl_active,
+                "authenticated_as": used_user,
             }
             conn.unbind()
             return {
                 "success": True,
-                "message": f"Успешное подключение и авторизация сервисной учётной записи на {srv_uri}",
+                "message": f"Успешное подключение и авторизация в Active Directory как {used_user} на {srv_uri}",
                 "server": srv_uri,
                 "info": server_info,
             }
