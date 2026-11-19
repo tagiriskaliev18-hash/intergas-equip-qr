@@ -12,10 +12,18 @@ import argparse
 import json
 import os
 import re
+import ssl
 import subprocess
 import sys
 import urllib.request
 from pathlib import Path
+
+# SSL Context для корпоративных сетей и слабых промежуточных ключей
+SSL_CTX = ssl._create_unverified_context()
+try:
+    SSL_CTX.set_ciphers('DEFAULT:@SECLEVEL=1')
+except Exception:
+    pass
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
@@ -87,7 +95,7 @@ def call_smartapi(
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
+        with urllib.request.urlopen(req, timeout=45, context=SSL_CTX) as resp:
             body = json.loads(resp.read().decode("utf-8"))
             choices = body.get("choices", [])
             if choices and "message" in choices[0]:

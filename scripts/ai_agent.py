@@ -16,12 +16,20 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
 import subprocess
 import sys
 import urllib.parse
 import urllib.request
 import webbrowser
 from pathlib import Path
+
+# SSL Context для обхода проверок корпоративных прокси и слабых ключей (EE certificate key too weak)
+SSL_CTX = ssl._create_unverified_context()
+try:
+    SSL_CTX.set_ciphers('DEFAULT:@SECLEVEL=1')
+except Exception:
+    pass
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
@@ -114,7 +122,7 @@ def call_smartapi(messages: list[dict], model: str, api_key: str = DEFAULT_API_K
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=90) as resp:
+        with urllib.request.urlopen(req, timeout=90, context=SSL_CTX) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             return data["choices"][0]["message"]["content"]
     except urllib.error.HTTPError as e:
