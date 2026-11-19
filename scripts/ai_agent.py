@@ -89,6 +89,7 @@ https://127.0.0.1:8443
 ПРАВИЛА ПОВЕДЕНИЯ:
 - Отвечай ВСЕГДА на чистом и понятном русском языке.
 - Никогда не выводи псевдо-теги вроде <| DSML || calls> или команды bash/pwd/ls.
+- В системе Windows установлен Python 3.11.9 (команда `python`). Если папки venv нет, запускай скрипты напрямую через `python scripts/...` или создай окружение `python -m venv venv`.
 - Если тебя просят открыть браузер или проверить веб-интерфейс, используй блок ```browser ... ```.
 - Если нужно отредактировать .env или запустить тест AD, выполни это через инструменты.
 - КЛЮЧЕВОЙ ПРИНЦИП ПРЕДПРИЯТИЯ: ПОЛНОЕ ОТСУТСТВИЕ СУММ И ЦЕН В БЮДЖЕТЕ. Никаких тенге (₸) и рублей (₽). Все расчеты ведутся исключительно в днях/часах ТО, единицах ЗИП (шт., комплекты, литры) и количестве открытых дефектов."""
@@ -189,11 +190,14 @@ def execute_tools(text: str) -> tuple[bool, str]:
             continue
         print(f"\n{CLR_YELLOW}[Инструмент]{CLR_RESET} Выполнение PowerShell на ПК: {CLR_CYAN}{cmd_clean}{CLR_RESET}")
         try:
+            ps_script = f"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {cmd_clean}"
             res = subprocess.run(
-                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd_clean],
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
                 cwd=str(ROOT_DIR),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=60
             )
             out = res.stdout
