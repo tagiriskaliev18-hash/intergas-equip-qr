@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from app import config, keycloak_auth, notifications, pdf_generator, qr_service, security_qr, storage
+from app import ad_auth, config, keycloak_auth, notifications, pdf_generator, qr_service, security_qr, storage
 from app.models import (
     CompleteMaintenanceInput,
     ConditionState,
@@ -237,14 +237,48 @@ async def auth_direct_login(
     target: str = Form(default="/"),
 ) -> Response:
     """
-    Прямой вход по логину/паролю (через встроенные учётные записи Keycloak).
+    Прямой вход по логину/паролю:
+    1. Через корпоративный Active Directory (AD / LDAP / LDAPS) АО «Интергаз Центральная Азия» (если включен).
+    2. Либо через встроенные учётные записи Keycloak Realm (admin, engineer, operator).
     """
-    u = username.strip().lower()
-    acc = keycloak_auth.BUILTIN_ACCOUNTS.get(u)
+    u_raw = username.strip()
+    u_lower = u_raw.lower()
+
+    # 1. Проверка через корпоративный Active Directory
+    if config.AD_ENABLED:
+        ad_user_dict = ad_auth.authenticate_ad_user(u_raw, password)
+        if ad_user_dict:
+            user = keycloak_auth.UserProfile(
+                sub=ad_user_dict["sub"],
+                username=ad_user_dict["username"],
+                name=ad_user_dict["name"],
+                email=ad_user_dict["email"],
+                roles=ad_user_dict["roles"],
+                role_label=ad_user_dict["role_label"],
+                is_admin=ad_user_dict["is_admin"],
+                is_engineer=ad_user_dict["is_engineer"],
+            )
+            jwt_session = keycloak_auth.create_session_jwt(user)
+            response = RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
+            response.set_cookie(
+                key=config.SESSION_COOKIE_NAME,
+                value=jwt_session,
+                max_age=86400 * 7,
+                httponly=True,
+                samesite="lax",
+                secure=True,
+            )
+            return response
+
+    # 2. Проверка через встроенные учётные записи Keycloak Realm
+    acc = keycloak_auth.BUILTIN_ACCOUNTS.get(u_lower)
 
     if not acc or acc["password"] != password:
+        err_msg = "Неверный логин или пароль"
+        if config.AD_ENABLED:
+            err_msg += " (проверено в Active Directory и локальной базе)"
         return HTMLResponse(
-            content=keycloak_auth.render_login_page(target_url=target, error="Неверный логин или пароль"),
+            content=keycloak_auth.render_login_page(target_url=target, error=err_msg),
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 
@@ -270,6 +304,36 @@ async def auth_direct_login(
         secure=True,
     )
     return response
+
+
+@app.get("/api/auth/ad-status")
+async def get_ad_status() -> dict[str, Any]:
+    """
+    Возвращает статус подключения и параметры интеграции с Active Directory
+    (без раскрытия паролей и секретов).
+    """
+    status_info: dict[str, Any] = {
+        "enabled": config.AD_ENABLED,
+        "domain": config.AD_DOMAIN,
+        "server": config.AD_SERVER,
+        "base_dn": config.AD_BASE_DN,
+        "users_ou": config.AD_USERS_OU,
+        "use_ssl": config.AD_USE_SSL or config.AD_SERVER.startswith("ldaps://"),
+        "role_groups": {
+            "admin": config.AD_GROUP_ADMIN,
+            "engineer": config.AD_GROUP_ENGINEER,
+            "operator": config.AD_GROUP_OPERATOR,
+        },
+    }
+    if config.AD_ENABLED:
+        diag = ad_auth.test_ad_connection()
+        status_info["connectivity"] = diag
+    else:
+        status_info["connectivity"] = {
+            "success": False,
+            "message": "Интеграция с Active Directory отключена (AD_ENABLED=false). Используется встроенный Keycloak realm.",
+        }
+    return status_info
 
 
 @app.get("/auth/logout")
@@ -305,9 +369,9 @@ async def index_page(request: Request) -> Response:
     """
     Главный экран (SPA):
     - кнопка запуска видеокамеры и закрытого QR-сканирования;
-    - сводка уведомлений ТО и бюджета;
+    - сводка уведомлений ТО и потребности в ЗИП;
     - реестр оборудования;
-    - профиль пользователя Keycloak.
+    - профиль пользователя Keycloak / Active Directory.
     """
     current_user = keycloak_auth.get_current_user(request)
     lan_ips = get_local_ipv4_addresses()
@@ -328,7 +392,7 @@ async def index_page(request: Request) -> Response:
 async def equipment_page(request: Request, equipment_id: str) -> Response:
     """
     Карточка агрегата по ссылке из QR-кода:
-    - 4 вкладки: Документы (PDF), ТО и бюджет, Фотоосмотр, Дефекты;
+    - 4 вкладки: Документы (PDF), Графики ТО и ЗИП, Фотоосмотр, Дефекты;
     - скачивание/печать защищённого QR-кода.
     """
     try:
@@ -604,7 +668,7 @@ async def not_found_page(request: Request) -> Response:
 @app.get("/api/overview")
 async def overview() -> dict[str, Any]:
     """
-    Сводка по оборудованию, активные предупреждения о ТО и расчёт сумм в бюджет.
+    Сводка по оборудованию, активные предупреждения о сроках ТО и дефиците ЗИП.
     """
     return notifications.build_overview()
 
@@ -672,7 +736,7 @@ async def create_equipment(
 @app.get("/api/equipment/{equipment_id}")
 async def get_equipment(equipment_id: str) -> dict[str, Any]:
     """
-    Возвращает полные данные карточки оборудования, локальные документы и бюджетную оценку.
+    Возвращает полные данные карточки оборудования, локальные документы и статус ЗИП.
     """
     try:
         storage.validate_safe_name(equipment_id)
@@ -902,7 +966,7 @@ async def resolve_defect(
 
 
 # =============================================================================
-# API Автогенерации PDF (Дефектные ведомости, графики ТО, бюджетные заявки)
+# API Автогенерации PDF (Дефектные ведомости, графики ТО, ведомости ЗИП)
 # =============================================================================
 
 @app.post(
@@ -950,7 +1014,7 @@ async def generate_schedule_pdf(equipment_id: str) -> DocumentFile:
 @app.get("/api/equipment/{equipment_id}/budget-pdf")
 async def get_equipment_budget_pdf(equipment_id: str) -> Response:
     """
-    Выгружает в формате PDF бюджетную заявку на материалы и ТО по конкретному агрегату.
+    Выгружает в формате PDF ведомость потребности в ЗИП и график ТО по конкретному агрегату.
     """
     record = storage.get_equipment(equipment_id)
     if not record:
@@ -958,10 +1022,10 @@ async def get_equipment_budget_pdf(equipment_id: str) -> Response:
 
     pdf_bytes = pdf_generator.generate_budget_pdf(
         [record],
-        title=f"Бюджетная заявка на ТО: {record.name}",
+        title=f"Ведомость потребности в ЗИП и график ТО: {record.name}",
     )
     headers = {
-        "Content-Disposition": f"inline; filename=\"budget_{equipment_id}.pdf\"",
+        "Content-Disposition": f"inline; filename=\"zip_plan_{equipment_id}.pdf\"",
         "X-Content-Type-Options": "nosniff",
     }
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
@@ -970,16 +1034,15 @@ async def get_equipment_budget_pdf(equipment_id: str) -> Response:
 @app.get("/api/budget-report.pdf")
 async def get_summary_budget_report_pdf() -> Response:
     """
-    Выгружает сводную бюджетную заявку по всем агрегатам предприятия,
-    требующим финансирования ТО и ТМЦ в ближайший горизонт.
+    Выгружает сводный график регламентных работ и ведомость потребности в ЗИП по всем агрегатам предприятия.
     """
     records = storage.list_equipment()
     pdf_bytes = pdf_generator.generate_budget_pdf(
         records,
-        title="Сводная бюджетная заявка на проведение ТО и закупку материалов",
+        title="Сводный график регламентных работ и ведомость потребности в ЗИП",
     )
     headers = {
-        "Content-Disposition": "inline; filename=\"budget_report_summary.pdf\"",
+        "Content-Disposition": "inline; filename=\"zip_schedule_summary.pdf\"",
         "X-Content-Type-Options": "nosniff",
     }
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)

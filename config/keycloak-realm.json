@@ -30,6 +30,111 @@
       }
     ]
   },
+  "components": {
+    "org.keycloak.storage.UserStorageProvider": [
+      {
+        "id": "ad-ldap-intergas-federation",
+        "name": "intergas-active-directory",
+        "providerId": "ldap",
+        "subComponents": {
+          "org.keycloak.storage.ldap.mappers.LDAPStorageMapper": [
+            {
+              "id": "ad-full-name-mapper",
+              "name": "full name",
+              "providerId": "full-name-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.full.name.attribute": ["cn"],
+                "read.only": ["true"],
+                "write.only": ["false"]
+              }
+            },
+            {
+              "id": "ad-email-mapper",
+              "name": "email",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": ["mail"],
+                "user.model.attribute": ["email"],
+                "always.read.value.from.ldap": ["true"],
+                "read.only": ["true"]
+              }
+            },
+            {
+              "id": "ad-username-mapper",
+              "name": "username",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": ["sAMAccountName"],
+                "user.model.attribute": ["username"],
+                "always.read.value.from.ldap": ["true"],
+                "read.only": ["true"]
+              }
+            },
+            {
+              "id": "ad-group-mapper",
+              "name": "group-mapper",
+              "providerId": "group-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "groups.dn": ["OU=Groups,OU=ICA,DC=intergas,DC=kz"],
+                "group.name.ldap.attribute": ["cn"],
+                "group.object.classes": ["group"],
+                "preserve.group.inheritance": ["true"],
+                "ignore.missing.groups": ["true"],
+                "membership.ldap.attribute": ["member"],
+                "membership.attribute.type": ["DN"],
+                "membership.user.ldap.attribute": ["sAMAccountName"],
+                "mode": ["READ_ONLY"],
+                "user.roles.retrieve.strategy": ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"]
+              }
+            },
+            {
+              "id": "ad-role-mapper",
+              "name": "role-mapper",
+              "providerId": "role-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "roles.dn": ["OU=Groups,OU=ICA,DC=intergas,DC=kz"],
+                "role.name.ldap.attribute": ["cn"],
+                "role.object.classes": ["group"],
+                "membership.ldap.attribute": ["member"],
+                "membership.attribute.type": ["DN"],
+                "membership.user.ldap.attribute": ["sAMAccountName"],
+                "mode": ["READ_ONLY"],
+                "user.roles.retrieve.strategy": ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"]
+              }
+            }
+          ]
+        },
+        "config": {
+          "enabled": ["true"],
+          "priority": ["0"],
+          "editMode": ["READ_ONLY"],
+          "syncRegistrations": ["false"],
+          "vendor": ["ad"],
+          "usernameLDAPAttribute": ["sAMAccountName"],
+          "rdnLDAPAttribute": ["cn"],
+          "uuidLDAPAttribute": ["objectGUID"],
+          "userObjectClasses": ["person, organizationalPerson, user"],
+          "connectionUrl": ["ldap://ad.intergas.kz:389"],
+          "usersDn": ["OU=Users,OU=ICA,DC=intergas,DC=kz"],
+          "authType": ["simple"],
+          "bindDn": ["CN=svc_keycloak,OU=ServiceAccounts,DC=intergas,DC=kz"],
+          "bindCredential": ["${env.AD_BIND_CREDENTIAL:ChangeMeSecret}"],
+          "searchScope": ["1"],
+          "useTruststoreSpi": ["always"],
+          "connectionTimeout": ["5000"],
+          "readTimeout": ["10000"],
+          "batchSizeForSync": ["1000"],
+          "allowKerberosAuthentication": ["false"],
+          "useKerberosForPasswordAuthentication": ["false"]
+        }
+      }
+    ]
+  },
   "clients": [
     {
       "clientId": "mind-equip-app",

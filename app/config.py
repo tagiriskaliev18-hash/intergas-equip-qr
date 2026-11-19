@@ -31,6 +31,21 @@ KEYCLOAK_CLIENT_SECRET: str = os.getenv("KEYCLOAK_CLIENT_SECRET", "mind-equip-se
 JWT_SECRET: str = os.getenv("JWT_SECRET", "mind-jwt-session-secret-key-2026-auth")
 SESSION_COOKIE_NAME: str = "mind_session"
 
+# Active Directory (AD / LDAP / LDAPS) настройки предприятия АО «Интергаз Центральная Азия»
+AD_ENABLED: bool = os.getenv("AD_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+AD_SERVER: str = os.getenv("AD_SERVER", "ldap://127.0.0.1:389")
+AD_DOMAIN: str = os.getenv("AD_DOMAIN", "intergas.kz")
+AD_BASE_DN: str = os.getenv("AD_BASE_DN", "DC=intergas,DC=kz")
+AD_USERS_OU: str = os.getenv("AD_USERS_OU", "OU=Users,OU=ICA,DC=intergas,DC=kz")
+AD_BIND_DN: str = os.getenv("AD_BIND_DN", "")
+AD_BIND_PASSWORD: str = os.getenv("AD_BIND_PASSWORD", "")
+AD_USE_SSL: bool = os.getenv("AD_USE_SSL", "false").strip().lower() in ("1", "true", "yes", "on") or AD_SERVER.startswith("ldaps://")
+
+# Доменные группы безопасности AD -> Роли в приложении
+AD_GROUP_ADMIN: str = os.getenv("AD_GROUP_ADMIN", "GG_ICA_Mechanics")
+AD_GROUP_ENGINEER: str = os.getenv("AD_GROUP_ENGINEER", "GG_ICA_Engineers")
+AD_GROUP_OPERATOR: str = os.getenv("AD_GROUP_OPERATOR", "GG_ICA_Operators")
+
 BUDGET_ALERT_HORIZON_DAYS: int = int(os.getenv("QR_BUDGET_HORIZON_DAYS", "30"))
 URGENT_ALERT_HORIZON_DAYS: int = int(os.getenv("QR_URGENT_HORIZON_DAYS", "7"))
 

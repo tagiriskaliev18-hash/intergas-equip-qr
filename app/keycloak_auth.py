@@ -350,14 +350,17 @@ def render_login_page(target_url: str = "/", error: str = "") -> str:
       <!-- Standard credentials form -->
       <form action="/auth/direct-login" method="POST" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hairline);">
         <input type="hidden" name="target" value="{target_url}">
+        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px;">
+          Корпоративный домен Active Directory ({config.AD_DOMAIN})
+        </div>
         <div class="form-group" style="margin-bottom: 8px;">
-          <input type="text" name="username" class="form-input" placeholder="Логин (например, admin)" required style="font-size: 14px; padding: 8px 10px;">
+          <input type="text" name="username" class="form-input" placeholder="Логин (например, sAMAccountName или admin)" required style="font-size: 14px; padding: 8px 10px;">
         </div>
         <div class="form-group" style="margin-bottom: 12px;">
-          <input type="password" name="password" class="form-input" placeholder="Пароль" required style="font-size: 14px; padding: 8px 10px;">
+          <input type="password" name="password" class="form-input" placeholder="Пароль доменной учётной записи" required style="font-size: 14px; padding: 8px 10px;">
         </div>
         <button type="submit" class="btn btn-secondary btn-sm" style="width: 100%;">
-          Войти по логину и паролю
+          Войти по учётной записи (AD / Keycloak)
         </button>
       </form>
 

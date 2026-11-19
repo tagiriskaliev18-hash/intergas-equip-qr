@@ -745,3 +745,103 @@ def test_network_info_port_8443(client) -> None:
     assert data.get("port") == 8443
     assert ":8443" in data.get("primary_url", "")
     assert isinstance(data.get("interfaces"), list)
+
+
+# ---------------------------------------------------------------------------
+# 13. Active Directory (AD / LDAP) Integration Tests
+# ---------------------------------------------------------------------------
+
+def test_active_directory_username_cleaning_and_role_mapping() -> None:
+    """
+    Verifies domain username normalization and group-to-role mappings for ICA.
+    """
+    from app import ad_auth
+
+    # 1. Clean username tests
+    u1, upn1 = ad_auth.clean_username("INTERGAS\\a.sarsembayev", default_domain="intergas.kz")
+    assert u1 == "a.sarsembayev"
+    assert upn1 == "a.sarsembayev@intergas.kz"
+
+    u2, upn2 = ad_auth.clean_username("t.iskaliyev@intergas.kz", default_domain="intergas.kz")
+    assert u2 == "t.iskaliyev"
+    assert upn2 == "t.iskaliyev@intergas.kz"
+
+    u3, upn3 = ad_auth.clean_username("operator_grs", default_domain="intergas.kz")
+    assert u3 == "operator_grs"
+    assert upn3 == "operator_grs@intergas.kz"
+
+    # 2. Group to role mapping: Admin / Mechanics
+    roles_admin, label_admin = ad_auth._map_ad_groups_to_roles(["CN=GG_ICA_Mechanics,OU=Groups,DC=intergas,DC=kz"])
+    assert "admin" in roles_admin
+    assert "engineer" in roles_admin
+    assert "Главный механик" in label_admin
+
+    # 3. Group to role mapping: Engineers
+    roles_eng, label_eng = ad_auth._map_ad_groups_to_roles(["CN=GG_ICA_Engineers,OU=Groups,DC=intergas,DC=kz"])
+    assert "engineer" in roles_eng
+    assert "admin" not in roles_eng
+    assert "Инженер" in label_eng
+
+    # 4. Group to role mapping: Operators
+    roles_op, label_op = ad_auth._map_ad_groups_to_roles(["CN=GG_ICA_Operators,OU=Groups,DC=intergas,DC=kz"])
+    assert "operator" in roles_op
+    assert "admin" not in roles_op
+    assert "Оператор" in label_op
+
+
+def test_active_directory_status_endpoint_and_direct_login_mock(client, monkeypatch) -> None:
+    """
+    Verifies /api/auth/ad-status endpoint and that Active Directory direct-login
+    authenticates corporate domain users into FastAPI sessions.
+    """
+    from app import ad_auth, config
+
+    # 1. Check status endpoint
+    status_resp = client.get("/api/auth/ad-status")
+    assert status_resp.status_code == 200
+    st_data = status_resp.json()
+    assert "enabled" in st_data
+    assert st_data.get("domain") == "intergas.kz"
+    assert "role_groups" in st_data
+
+    # 2. Enable AD via monkeypatch and mock authenticate_ad_user
+    monkeypatch.setattr(config, "AD_ENABLED", True)
+
+    def mock_authenticate_ad_user(username: str, password: str):
+        if username in ("a.sarsembayev", "INTERGAS\\a.sarsembayev") and password == "CorpDomainSecretPass2026!":
+            return {
+                "sub": "ad-guid-a-sarsembayev",
+                "username": "a.sarsembayev",
+                "name": "Алибек Сарсембаев",
+                "email": "a.sarsembayev@intergas.kz",
+                "roles": ["engineer"],
+                "role_label": "Инженер ТО и диагностики (AD)",
+                "is_admin": False,
+                "is_engineer": True,
+                "member_of": ["CN=GG_ICA_Engineers,OU=Groups,DC=intergas,DC=kz"],
+                "auth_source": "Active Directory (LDAP)",
+            }
+        return None
+
+    monkeypatch.setattr(ad_auth, "authenticate_ad_user", mock_authenticate_ad_user)
+
+    # 3. Test successful AD login
+    ad_login = client.post("/auth/direct-login", data={
+        "username": "a.sarsembayev",
+        "password": "CorpDomainSecretPass2026!",
+        "target": "/",
+    }, follow_redirects=False)
+
+    assert ad_login.status_code in (302, 303)
+    session_cookie = ad_login.cookies.get("mind_session")
+    assert session_cookie, "AD login must set session cookie"
+
+    # 4. Check authenticated session user info
+    me_resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {session_cookie}"})
+    assert me_resp.status_code == 200
+    res_data = me_resp.json()
+    assert res_data["authenticated"] is True
+    user_info = res_data["user"]
+    assert user_info["username"] == "a.sarsembayev"
+    assert user_info["name"] == "Алибек Сарсембаев"
+    assert "engineer" in user_info["roles"]
