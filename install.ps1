@@ -95,14 +95,21 @@ python "$targetScript" %*
 "@
 Set-Content -Path $cmdLauncher -Value $cmdScript -Encoding ASCII
 
-# 5. Добавление в системный PATH пользователя (чтобы команда 'mind' работала везде)
+# 5. Если есть права Администратора — копируем прямо в System32 (мгновенный глобальный доступ)
+try {
+    if (Test-Path "$env:windir\System32") {
+        Copy-Item -Path $cmdLauncher -Destination "$env:windir\System32\mind.cmd" -Force -ErrorAction SilentlyContinue
+    }
+} catch {}
+
+# 6. Добавление в системный PATH пользователя (чтобы команда 'mind' работала везде)
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($userPath -notlike "*$binDir*") {
     [Environment]::SetEnvironmentVariable("Path", "$binDir;$userPath", "User")
     $env:Path = "$binDir;$env:Path"
 }
 
-# 6. Создание ярлыков на Рабочем столе
+# 7. Создание ярлыков на Рабочем столе
 $desktop = [Environment]::GetFolderPath('Desktop')
 if (Test-Path $desktop) {
     # Графический .lnk ярлык
@@ -132,5 +139,5 @@ Write-Host ""
 Write-Host "$CYAN[*] Запуск Mind CLI прямо сейчас...$RESET"
 Write-Host ""
 
-# 7. Мгновенный запуск Mind CLI прямо в текущей консоли
+# 8. Мгновенный запуск Mind CLI прямо в текущей консоли
 & $cmdLauncher
