@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-M I N D // C L I  —  AUTONOMOUS EXECUTIVE TERMINAL
+M I N D // C L I  —  AUTONOMOUS EXECUTIVE TERMINAL v2.5
 ================================================================================
 Разработано для Тагира Искалиева // Экосистема Mind
 Эстетика: Teenage Engineering • Apple • Anduril Industrial HUD
-Движок: SmartAPI (53 модели) • Zero-Dependency • 24-bit TrueColor
+Движок: SmartAPI (53 модели) • Структурированный каталог • Живые анимации
+Иконки: Персональный глиф и фирменный цвет для каждой модели
 Защита: Loop Breaker (Анти-зацикливание) • Token Economy • Auto-Fallback
 ================================================================================
 """
@@ -19,6 +20,7 @@ import shutil
 import ssl
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -26,7 +28,7 @@ import webbrowser
 from pathlib import Path
 from typing import Any, Optional
 
-# Включение 24-bit TrueColor и ANSI VT100 в Windows Terminal / CMD / PowerShell
+# Включение 24-bit TrueColor и ANSI VT100
 os.system("")
 
 # ------------------------------------------------------------------------------
@@ -37,32 +39,24 @@ C_INDIGO = (75, 59, 255)    # #4B3BFF
 C_BLUE   = (30, 144, 255)   # #1E90FF
 C_CYAN   = (0, 245, 255)    # #00F5FF (Emissive Accent)
 C_WHITE  = (240, 244, 255)  # Crisp White
-C_MUTED  = (145, 155, 180)  # Muted Slate
-C_DARK   = (40, 45, 65)     # Hairline Border
-C_SURF   = (16, 18, 28)     # Dark Surface
+C_MUTED  = (140, 150, 175)  # Muted Slate
+C_DARK   = (45, 50, 75)     # Hairline Border
 C_GREEN  = (0, 230, 153)    # Success Emerald
-C_AMBER  = (255, 175, 0)    # Warning Amber
+C_AMBER  = (255, 184, 0)    # Warning Gold
 C_RED    = (255, 75, 90)    # Error Crimson
+C_MAGENTA= (217, 70, 239)   # Neon Purple
 
 
 def rgb(r: int, g: int, b: int, text: str) -> str:
     return f"\033[38;2;{r};{g};{b}m{text}\033[0m"
 
 
-def bg_rgb(r: int, g: int, b: int, text: str) -> str:
-    return f"\033[48;2;{r};{g};{b}m{text}\033[0m"
-
-
 def bold(text: str) -> str:
     return f"\033[1m{text}\033[0m"
 
 
-def dim(text: str) -> str:
-    return f"\033[2m{text}\033[0m"
-
-
 def gradient(text: str, c1: tuple[int, int, int] = C_VIOLET, c2: tuple[int, int, int] = C_CYAN) -> str:
-    """Генерирует плавный 24-битный цветовой градиент по тексту."""
+    """Генерирует 24-битный плавный градиент по тексту."""
     n = max(len(text), 1)
     out = []
     for i, ch in enumerate(text):
@@ -75,13 +69,109 @@ def gradient(text: str, c1: tuple[int, int, int] = C_VIOLET, c2: tuple[int, int,
 
 
 # ------------------------------------------------------------------------------
-# СИСТЕМНЫЕ ПУТИ И SSL
+# РЕЕСТР МОДЕЛЕЙ: СТРУКТУРА, СЕМЕЙСТВА И УНИКАЛЬНЫЕ ИКОНКИ
+# ------------------------------------------------------------------------------
+# Иконки и цвета семейств:
+# ✦ Gemini (Cyan) • ⚡ DeepSeek (Indigo) • ❖ Claude (Violet)
+# ⬡ GPT (Amber) • ◐ Kimi (Emerald) • ⌬ Qwen (Magenta)
+# ⊛ GLM (Sky Blue) • ✕ Grok (White) • ⋈ MiniMax (Gold) • ⚙ Codex / Other (Muted)
+
+MODEL_METADATA: dict[str, dict[str, Any]] = {
+    # 🏆 Топ-6 Флагманов
+    "gemini-3.8-flash": {
+        "icon": "✦", "color": C_CYAN, "family": "Gemini", "vendor": "Google DeepMind",
+        "desc": "Сверхбыстрый, безлимитный, нулевой оверхед (DEFAULT)", "flagship": True
+    },
+    "deepseek-v4-pro": {
+        "icon": "⚡", "color": (50, 130, 255), "family": "DeepSeek", "vendor": "DeepSeek AI",
+        "desc": "Лидер по коду, PowerShell, скриптам и системной отладке", "flagship": True
+    },
+    "claude-opus-5-5": {
+        "icon": "❖", "color": C_VIOLET, "family": "Claude", "vendor": "Anthropic",
+        "desc": "Архитектурный синтез, глубокие мысли высокой сложности", "flagship": True
+    },
+    "claude-sonnet-5": {
+        "icon": "❖", "color": (190, 110, 255), "family": "Claude", "vendor": "Anthropic",
+        "desc": "Новейший интеллектуальный флагман Sonnet 5", "flagship": True
+    },
+    "kimi-k3.1-pro": {
+        "icon": "◐", "color": C_GREEN, "family": "Kimi", "vendor": "Moonshot AI",
+        "desc": "Огромный контекст, глубокий анализ документов и файлов", "flagship": True
+    },
+    "gpt-6-sol": {
+        "icon": "⬡", "color": C_AMBER, "family": "GPT", "vendor": "OpenAI",
+        "desc": "Флагман следующего поколения линейки GPT-6", "flagship": True
+    },
+
+    # ✦ Семейство Google Gemini
+    "gemini-3.1-pro": {"icon": "✦", "color": C_CYAN, "family": "Gemini", "vendor": "Google", "desc": "Pro рассуждения v3.1"},
+    "gemini-3.1-pro-preview": {"icon": "✦", "color": C_CYAN, "family": "Gemini", "vendor": "Google", "desc": "Экспериментальный Pro 3.1"},
+    "gemini-4-carbon": {"icon": "✦", "color": C_BLUE, "family": "Gemini", "vendor": "Google", "desc": "Новое ядро Carbon"},
+    "gemini-4-argon": {"icon": "✦", "color": C_BLUE, "family": "Gemini", "vendor": "Google", "desc": "Легковесное ядро Argon"},
+
+    # ⚡ Семейство DeepSeek
+    "deepseek-v4.1-flash": {"icon": "⚡", "color": C_CYAN, "family": "DeepSeek", "vendor": "DeepSeek", "desc": "Молниеносный генератор кода"},
+    "deepseek-v4-flash": {"icon": "⚡", "color": C_INDIGO, "family": "DeepSeek", "vendor": "DeepSeek", "desc": "Быстрый код V4"},
+    "deepseek-v4-flash-uncensored": {"icon": "⚡", "color": C_RED, "family": "DeepSeek", "vendor": "DeepSeek", "desc": "Без фильтрации"},
+
+    # ❖ Семейство Anthropic Claude
+    "claude-sonnet-4-6": {"icon": "❖", "color": (175, 120, 255), "family": "Claude", "vendor": "Anthropic", "desc": "Claude Sonnet 4.6"},
+    "claude-sonnet-5-5": {"icon": "❖", "color": (195, 130, 255), "family": "Claude", "vendor": "Anthropic", "desc": "Claude Sonnet 5.5"},
+    "claude-haiku-5-5": {"icon": "❖", "color": (210, 160, 255), "family": "Claude", "vendor": "Anthropic", "desc": "Компактный и быстрый Haiku 5.5"},
+    "claude-opus-5": {"icon": "❖", "color": C_VIOLET, "family": "Claude", "vendor": "Anthropic", "desc": "Claude Opus 5"},
+    "claude-opus-4-8": {"icon": "❖", "color": C_VIOLET, "family": "Claude", "vendor": "Anthropic", "desc": "Claude Opus 4.8"},
+    "claude-opus-4-7": {"icon": "❖", "color": C_VIOLET, "family": "Claude", "vendor": "Anthropic", "desc": "Claude Opus 4.7"},
+    "claude-opus-4-6": {"icon": "❖", "color": C_VIOLET, "family": "Claude", "vendor": "Anthropic", "desc": "Claude Opus 4.6"},
+    "claude-fable-5": {"icon": "❖", "color": C_MUTED, "family": "Claude", "vendor": "Anthropic", "desc": "Fable 5"},
+    "claude-fable-5-1": {"icon": "❖", "color": C_MUTED, "family": "Claude", "vendor": "Anthropic", "desc": "Fable 5.1"},
+    "claude-fable-5-2": {"icon": "❖", "color": C_MUTED, "family": "Claude", "vendor": "Anthropic", "desc": "Fable 5.2"},
+
+    # ⬡ Семейство OpenAI GPT
+    "gpt-6-luna": {"icon": "⬡", "color": C_AMBER, "family": "GPT", "vendor": "OpenAI", "desc": "GPT-6 Luna Edition"},
+    "gpt-6-astra": {"icon": "⬡", "color": C_AMBER, "family": "GPT", "vendor": "OpenAI", "desc": "GPT-6 Astra Edition"},
+    "gpt-6.2-sol": {"icon": "⬡", "color": C_AMBER, "family": "GPT", "vendor": "OpenAI", "desc": "GPT-6.2 Sol"},
+    "gpt-6.2-astra": {"icon": "⬡", "color": C_AMBER, "family": "GPT", "vendor": "OpenAI", "desc": "GPT-6.2 Astra"},
+    "gpt-6.1-sol": {"icon": "⬡", "color": C_AMBER, "family": "GPT", "vendor": "OpenAI", "desc": "GPT-6.1 Sol"},
+    "gpt-6.1-terra": {"icon": "⬡", "color": C_AMBER, "family": "GPT", "vendor": "OpenAI", "desc": "GPT-6.1 Terra"},
+    "gpt-5.6-sol": {"icon": "⬡", "color": (230, 160, 20), "family": "GPT", "vendor": "OpenAI", "desc": "GPT-5.6 Sol"},
+    "gpt-5.6-luna": {"icon": "⬡", "color": (230, 160, 20), "family": "GPT", "vendor": "OpenAI", "desc": "GPT-5.6 Luna"},
+    "gpt-5.6-terra": {"icon": "⬡", "color": (230, 160, 20), "family": "GPT", "vendor": "OpenAI", "desc": "GPT-5.6 Terra"},
+    "gpt-image-2.6": {"icon": "⬡", "color": C_MUTED, "family": "GPT", "vendor": "OpenAI", "desc": "Генерация изображений"},
+
+    # ◐ Семейство Moonshot Kimi
+    "kimi-k3": {"icon": "◐", "color": C_GREEN, "family": "Kimi", "vendor": "Moonshot", "desc": "Kimi K3"},
+    "kimi-k2.7-code": {"icon": "◐", "color": C_GREEN, "family": "Kimi", "vendor": "Moonshot", "desc": "Kimi кодер v2.7"},
+    "kimi-k2.6": {"icon": "◐", "color": C_GREEN, "family": "Kimi", "vendor": "Moonshot", "desc": "Kimi K2.6"},
+
+    # ⌬ Семейство Alibaba Qwen
+    "qwen-4-max": {"icon": "⌬", "color": C_MAGENTA, "family": "Qwen", "vendor": "Alibaba", "desc": "Флагман Qwen 4 Max"},
+    "qwen-3.8-max": {"icon": "⌬", "color": C_MAGENTA, "family": "Qwen", "vendor": "Alibaba", "desc": "Qwen 3.8 Max"},
+    "qwen-3.8-flash-next": {"icon": "⌬", "color": C_MAGENTA, "family": "Qwen", "vendor": "Alibaba", "desc": "Qwen 3.8 Flash Next"},
+
+    # ⊛ GLM / Grok / MiniMax / Другие
+    "glm-5.3": {"icon": "⊛", "color": (56, 189, 248), "family": "GLM", "vendor": "Zhipu AI", "desc": "GLM 5.3 Аналитик"},
+    "glm-5.3-flash": {"icon": "⊛", "color": (56, 189, 248), "family": "GLM", "vendor": "Zhipu AI", "desc": "GLM 5.3 Flash"},
+    "grok-4.7": {"icon": "✕", "color": C_WHITE, "family": "Grok", "vendor": "xAI", "desc": "Grok 4.7 xAI"},
+    "grok-4.6": {"icon": "✕", "color": C_WHITE, "family": "Grok", "vendor": "xAI", "desc": "Grok 4.6 xAI"},
+    "grok-4.5": {"icon": "✕", "color": C_WHITE, "family": "Grok", "vendor": "xAI", "desc": "Grok 4.5 xAI"},
+    "minimax-m3": {"icon": "⋈", "color": (245, 158, 11), "family": "MiniMax", "vendor": "MiniMax", "desc": "MiniMax M3 (1M контекст)"},
+    "minimax-m3.1-flash": {"icon": "⋈", "color": (245, 158, 11), "family": "MiniMax", "vendor": "MiniMax", "desc": "MiniMax M3.1 Flash"},
+    "mimo-v2.6-pro": {"icon": "◈", "color": C_MUTED, "family": "Mimo", "vendor": "Xiaomi", "desc": "Mimo Pro v2.6"},
+    "mimo-v2.6-flash": {"icon": "◈", "color": C_MUTED, "family": "Mimo", "vendor": "Xiaomi", "desc": "Mimo Flash v2.6"},
+    "muse-spark-1.3": {"icon": "◈", "color": C_MUTED, "family": "Other", "vendor": "Muse", "desc": "Muse Spark 1.3"},
+    "muse-wonder": {"icon": "◈", "color": C_MUTED, "family": "Other", "vendor": "Muse", "desc": "Muse Wonder"},
+    "nano-banana-2.1-ultra": {"icon": "◈", "color": C_MUTED, "family": "Other", "vendor": "Nano", "desc": "Nano Banana 2.1 Ultra"},
+    "hy4-preview": {"icon": "◈", "color": C_MUTED, "family": "Other", "vendor": "HY", "desc": "HY4 Preview"},
+    "codex-auto-review": {"icon": "⚙", "color": C_GREEN, "family": "Review", "vendor": "OpenAI", "desc": "Автоматический код-ревьюер"}
+}
+
+# ------------------------------------------------------------------------------
+# СИСТЕМНЫЕ ПАРАМЕТРЫ И СЕТЬ
 # ------------------------------------------------------------------------------
 USER_HOME = Path(os.path.expanduser("~"))
 DESKTOP_DIR = USER_HOME / "Desktop"
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
-# Обход корпоративного SSL-прокси (SECLEVEL=1)
 SSL_CTX = ssl._create_unverified_context()
 try:
     SSL_CTX.set_ciphers("DEFAULT:@SECLEVEL=1")
@@ -92,23 +182,6 @@ DEFAULT_API_KEY = os.getenv("SMARTAPI_KEY", "sk-smart-J6NAKcsgKoJ_tfaOrfapSY14L1
 DEFAULT_BASE_URL = os.getenv("SMARTAPI_BASE_URL", "https://smartapi.pro/v1").rstrip("/")
 DEFAULT_MODEL = "gemini-3.8-flash"
 
-FALLBACK_MODELS = [
-    "claude-fable-5", "claude-fable-5-1", "claude-fable-5-2", "claude-haiku-5-5",
-    "claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-5",
-    "claude-opus-5-5", "claude-sonnet-4-6", "claude-sonnet-5", "claude-sonnet-5-5",
-    "codex-auto-review", "deepseek-v4-flash", "deepseek-v4-flash-uncensored",
-    "deepseek-v4-pro", "deepseek-v4.1-flash", "gemini-3.1-pro", "gemini-3.1-pro-preview",
-    "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", "glm-5.3",
-    "glm-5.3-flash", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra",
-    "gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6.2-astra",
-    "gpt-6.2-sol", "gpt-image-2.6", "grok-4.5", "grok-4.6", "grok-4.7",
-    "hy4-preview", "kimi-k2.6", "kimi-k2.7-code", "kimi-k3", "kimi-k3.1-pro",
-    "mimo-v2.6-flash", "mimo-v2.6-pro", "minimax-m3", "minimax-m3.1-flash",
-    "muse-spark-1.3", "muse-wonder", "nano-banana-2.1-ultra", "qwen-3.8-flash-next",
-    "qwen-3.8-max", "qwen-4-max"
-]
-
-# Статистика сессии
 SESSION_STATS = {
     "total_requests": 0,
     "total_tokens_est": 0,
@@ -119,110 +192,266 @@ SESSION_STATS = {
 
 
 # ------------------------------------------------------------------------------
-# UI КОМПОНЕНТЫ И РЕНДЕРЕР ТЕРМИНАЛА
+# АНИМАЦИИ: МНОГОПОТОЧНЫЙ SPINNER И ИЗОМЕТРИЧЕСКИЙ ЛОГОТИП
 # ------------------------------------------------------------------------------
-def get_term_width() -> int:
-    try:
-        return min(shutil.get_terminal_size((80, 24)).columns, 90)
-    except Exception:
-        return 80
+class ThinkingAnimation:
+    """Плавная анимация мышления с вращением символов Braille и таймером."""
+    def __init__(self, model_name: str):
+        self.model_name = model_name
+        self.meta = MODEL_METADATA.get(model_name, {"icon": "◈", "color": C_CYAN})
+        self.stop_event = threading.Event()
+        self.thread: Optional[threading.Thread] = None
+        self.start_t = time.time()
+
+    def _spin(self):
+        # 10 кадров плавной кинематографичной анимации точек Braille
+        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        idx = 0
+        icon = rgb(*self.meta["color"], self.meta["icon"])
+        while not self.stop_event.is_set():
+            frame = gradient(frames[idx % len(frames)], C_VIOLET, C_CYAN)
+            elapsed = time.time() - self.start_t
+            status_text = f"\r  {icon} {rgb(*self.meta['color'], self.model_name)}  {frame}  {rgb(*C_MUTED, f'{elapsed:.1f}s')}  {gradient('Анализ задачи и планирование действий...', C_VIOLET, C_CYAN)}"
+            sys.stdout.write(status_text)
+            sys.stdout.flush()
+            idx += 1
+            time.sleep(0.08)
+
+        # Очистка строки после завершения
+        sys.stdout.write("\r" + " " * 85 + "\r")
+        sys.stdout.flush()
+
+    def __enter__(self):
+        self.thread = threading.Thread(target=self._spin, daemon=True)
+        self.thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop_event.set()
+        if self.thread:
+            self.thread.join(timeout=0.5)
 
 
 def render_banner():
-    """Выводит флагманский баннер в эстетике Teenage Engineering / Mind."""
-    w = get_term_width()
-    line = "━" * w
-    print(gradient(line, C_VIOLET, C_CYAN))
-    print(f"  {gradient('◆ M I N D // C L I', C_VIOLET, C_CYAN)}  {rgb(*C_MUTED, '•  AUTONOMOUS EXECUTIVE TERMINAL')}")
-    print(f"  {rgb(*C_MUTED, 'Ecosystem: Mind 2.4')}  {rgb(*C_DARK, '│')}  {rgb(*C_CYAN, 'Tagir Iskaliev')}  {rgb(*C_DARK, '│')}  {rgb(*C_GREEN, '53 Models Ready')}")
-    print(gradient(line, C_INDIGO, C_BLUE))
+    """Выводит кинематографический логотип Mind с градиентом."""
+    logo = [
+        "   ╭━╮╭━╮ ╭━━━╮ ╭━╮   ╭━╮ ╭━━━━╮",
+        "   ┃ ┃┃ ┃ ╰╮ ╭╯ ┃  ╰╮ ┃ ┃ ┃ ╭╮ ┃",
+        "   ┃ ╰╯ ┃  ┃ ┃  ┃ ╭╮╰╮┃ ┃ ┃ ┃┃ ┃",
+        "   ┃ ╭╮ ┃  ┃ ┃  ┃ ┃╰╮ ┃ ┃ ┃ ┃┃ ┃",
+        "   ┃ ┃┃ ┃ ╭╯ ╰╮ ┃ ┃ ╰╮  ┃ ┃ ╰╯ ┃",
+        "   ╰━╯╰━╯ ╰━━━╯ ╰━╯  ╰━━╯ ╰━━━━╯"
+    ]
+    w = 80
+    border = gradient("━" * w, C_VIOLET, C_CYAN)
+    print(f"\n{border}")
+    for col, line in enumerate(logo):
+        print(gradient(line, C_VIOLET, C_CYAN))
+    print(f"   {gradient('◆ M I N D // C L I', C_VIOLET, C_CYAN)}  {rgb(*C_MUTED, '•  AUTONOMOUS EXECUTIVE TERMINAL v2.5')}")
+    print(f"   {rgb(*C_MUTED, 'Ecosystem: Mind')}  {rgb(*C_DARK, '│')}  {rgb(*C_CYAN, 'Tagir Iskaliev')}  {rgb(*C_DARK, '│')}  {rgb(*C_GREEN, '53 Structured Models Ready')}")
+    print(f"{border}\n")
 
 
 def render_hud(model: str, status: str = "ONLINE", step: int = 0):
-    """Выводит компактную статусную строку оборудования и ИИ."""
-    w = get_term_width()
-    sec_status = rgb(*C_GREEN, "SEC:1")
-    stat_color = C_GREEN if status == "ONLINE" else C_AMBER
-    status_str = rgb(*stat_color, f"● {status}")
-    model_str = rgb(*C_CYAN, model)
-    step_str = f"STEP:{step}" if step > 0 else "READY"
+    """Выводит статусную строку в индустриальном стиле."""
+    meta = MODEL_METADATA.get(model, {"icon": "◈", "color": C_CYAN})
+    icon = rgb(*meta["color"], meta["icon"])
+    model_str = f"{icon} {rgb(*meta['color'], model)}"
+    status_color = C_GREEN if "ONLINE" in status or "IDLE" in status else C_AMBER
+    status_str = rgb(*status_color, f"● {status}")
     tokens_str = f"TOKENS:~{SESSION_STATS['total_tokens_est']}"
+    step_str = f"STEP:{step}" if step > 0 else "READY"
     
-    hud_content = f" {status_str}  │  {model_str}  │  {sec_status}  │  {rgb(*C_MUTED, step_str)}  │  {rgb(*C_MUTED, tokens_str)} "
-    border = rgb(*C_DARK, "─" * (w - 2))
-    print(f"{rgb(*C_DARK, '╭')}{border}{rgb(*C_DARK, '╮')}")
-    print(f"{rgb(*C_DARK, '│')}{hud_content:<{w+20}}{rgb(*C_DARK, '│')}")
-    print(f"{rgb(*C_DARK, '╰')}{border}{rgb(*C_DARK, '╯')}")
+    line = f" {status_str}  │  {model_str}  │  {rgb(*C_GREEN, 'SEC:1')}  │  {rgb(*C_MUTED, step_str)}  │  {rgb(*C_MUTED, tokens_str)} "
+    box_border = rgb(*C_DARK, "─" * 78)
+    print(f"{rgb(*C_DARK, '╭')}{box_border}{rgb(*C_DARK, '╮')}")
+    print(f"{rgb(*C_DARK, '│')}{line:<96}{rgb(*C_DARK, '│')}")
+    print(f"{rgb(*C_DARK, '╰')}{box_border}{rgb(*C_DARK, '╯')}")
 
 
 def render_box(title: str, body: str, color: tuple[int, int, int] = C_CYAN):
     """Отрисовывает аккуратный блок с hairline-рамкой."""
-    w = get_term_width()
-    body_lines = body.strip().split("\n")
-    
+    lines = body.strip().split("\n")
     header = f" {rgb(*color, '◈ ' + title)} "
-    line_len = max(w - len(title) - 6, 4)
-    top_line = rgb(*C_DARK, "╭─") + header + rgb(*C_DARK, "─" * line_len + "╮")
-    print(top_line)
-    
-    for l in body_lines:
+    line_len = max(78 - len(title) - 6, 4)
+    print(rgb(*C_DARK, "╭─") + header + rgb(*C_DARK, "─" * line_len + "╮"))
+    for l in lines:
         print(f"{rgb(*C_DARK, '│')}  {l}")
-        
-    print(f"{rgb(*C_DARK, '╰' + '─' * (w - 2) + '╯')}")
+    print(rgb(*C_DARK, "╰" + "─" * 78 + "╯"))
 
 
-def render_models_catalog(models: list[str], current: str = DEFAULT_MODEL):
-    """Интерактивная витрина всех моделей с категориями."""
-    w = get_term_width()
-    print(f"\n{rgb(*C_CYAN, '╭─ [КАТАЛОГ ИНТЕЛЛЕКТУАЛЬНЫХ МОДЕЛЕЙ SMARTAPI] ' + '─' * (w - 47) + '╮')}")
-    print(f"{rgb(*C_DARK, '│')}  {rgb(*C_AMBER, '🔥 РЕКОМЕНДУЕМЫЕ ДЛЯ БЫСТРОГО СТАРТА:')}")
-    print(f"{rgb(*C_DARK, '│')}    {rgb(*C_CYAN, '[20] gemini-3.8-flash')}    — Сверхбыстрый, безлимитный, нулевой оверхед (Default)")
-    print(f"{rgb(*C_DARK, '│')}    {rgb(*C_CYAN, '[16] deepseek-v4-pro')}     — Профессионал для PowerShell, кода и отладки")
-    print(f"{rgb(*C_DARK, '│')}    {rgb(*C_CYAN, '[11] claude-sonnet-5')}     — Новейший интеллект Claude Sonnet 5")
-    print(f"{rgb(*C_DARK, '│')}    {rgb(*C_CYAN, '[ 9] claude-opus-5-5')}     — Архитектурный синтез высокой сложности")
-    print(f"{rgb(*C_DARK, '│')}    {rgb(*C_CYAN, '[43] kimi-k3.1-pro')}       — Анализ огромных документов и массивов")
-    print(f"{rgb(*C_DARK, '│')}    {rgb(*C_CYAN, '[30] gpt-6-sol')}           — Флагман следующего поколения GPT-6")
-    print(f"{rgb(*C_DARK, '├' + '─' * (w - 2) + '┤')}")
-    print(f"{rgb(*C_DARK, '│')}  {rgb(*C_WHITE, f'ВСЕ ДОСТУПНЫЕ МОДЕЛИ ({len(models)} шт.):')}")
+# ------------------------------------------------------------------------------
+# СТРУКТУРИРОВАННЫЙ КАТАЛОГ: БЕЗ ХАОСА, ПО СЕМЕЙСТВАМ И ТИРАМ
+# ------------------------------------------------------------------------------
+# Упорядоченный список всех 53 моделей (Флагманы -> Семейства)
+ORDERED_MODEL_LIST: list[str] = [
+    # Топ-6 Флагманов (1..6)
+    "gemini-3.8-flash",
+    "deepseek-v4-pro",
+    "claude-opus-5-5",
+    "claude-sonnet-5",
+    "kimi-k3.1-pro",
+    "gpt-6-sol",
+
+    # Семейство Google Gemini (7..10)
+    "gemini-3.1-pro",
+    "gemini-3.1-pro-preview",
+    "gemini-4-carbon",
+    "gemini-4-argon",
+
+    # Семейство DeepSeek (11..13)
+    "deepseek-v4.1-flash",
+    "deepseek-v4-flash",
+    "deepseek-v4-flash-uncensored",
+
+    # Семейство Anthropic Claude (14..22)
+    "claude-sonnet-4-6",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
+    "claude-opus-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-fable-5-2",
+    "claude-fable-5-1",
+    "claude-fable-5",
+
+    # Семейство OpenAI GPT (23..32)
+    "gpt-6-luna",
+    "gpt-6-astra",
+    "gpt-6.2-sol",
+    "gpt-6.2-astra",
+    "gpt-6.1-sol",
+    "gpt-6.1-terra",
+    "gpt-5.6-sol",
+    "gpt-5.6-luna",
+    "gpt-5.6-terra",
+    "gpt-image-2.6",
+
+    # Семейство Kimi & Qwen (33..38)
+    "kimi-k3",
+    "kimi-k2.7-code",
+    "kimi-k2.6",
+    "qwen-4-max",
+    "qwen-3.8-max",
+    "qwen-3.8-flash-next",
+
+    # Специализированные и другие (39..53)
+    "glm-5.3",
+    "glm-5.3-flash",
+    "grok-4.7",
+    "grok-4.6",
+    "grok-4.5",
+    "minimax-m3",
+    "minimax-m3.1-flash",
+    "mimo-v2.6-pro",
+    "mimo-v2.6-flash",
+    "muse-spark-1.3",
+    "muse-wonder",
+    "nano-banana-2.1-ultra",
+    "hy4-preview",
+    "codex-auto-review"
+]
+
+
+def render_structured_catalog(current_model: str = DEFAULT_MODEL):
+    """Выводит логично сгруппированный каталог моделей с иконками и описаниями."""
+    print(f"\n{rgb(*C_CYAN, '╭─ [АРХИТЕКТУРНЫЙ КАТАЛОГ МОДЕЛЕЙ SMARTAPI] ' + '─' * 33 + '╮')}")
     
-    cols = 3
-    for i in range(0, len(models), cols):
-        chunk = models[i:i + cols]
-        parts = []
-        for j, m in enumerate(chunk):
-            idx = i + j + 1
-            is_active = (m == current)
-            badge_color = C_GREEN if is_active else C_AMBER
-            idx_str = f"[{idx:2d}]"
-            name_str = m[:20]
-            if is_active:
-                parts.append(f"{rgb(*badge_color, idx_str)} {rgb(*C_GREEN, bold(name_str)):<22}")
-            else:
-                parts.append(f"{rgb(*badge_color, idx_str)} {rgb(*C_WHITE, name_str):<22}")
-        line_str = "    ".join(parts)
-        print(f"{rgb(*C_DARK, '│')}  {line_str}")
+    # Секция 1: 🏆 ФЛАГМАНЫ
+    print(f"{rgb(*C_DARK, '│')}  {gradient('🏆 ТОП-6 ФЛАГМАНОВ ДЛЯ ЕЖЕДНЕВНОЙ РАБОТЫ:', C_VIOLET, C_CYAN)}")
+    for i in range(6):
+        m = ORDERED_MODEL_LIST[i]
+        meta = MODEL_METADATA.get(m, {})
+        idx_str = f"[{i+1:2d}]"
+        icon_str = rgb(*meta["color"], meta["icon"])
+        name_str = rgb(*meta["color"], bold(f"{m:<21}"))
+        vendor_str = rgb(*C_MUTED, f"{meta.get('vendor', ''):<16}")
+        desc_str = meta.get("desc", "")
+        mark = rgb(*C_GREEN, "◀ ACTIVE") if m == current_model else ""
+        print(f"{rgb(*C_DARK, '│')}    {rgb(*C_AMBER, idx_str)} {icon_str} {name_str} {vendor_str} {desc_str} {mark}")
+
+    print(f"{rgb(*C_DARK, '├' + '─' * 78 + '┤')}")
+    print(f"{rgb(*C_DARK, '│')}  {rgb(*C_WHITE, '📂 СЕМЕЙСТВА МОДЕЛЕЙ (сгруппированы по экосистемам):')}")
+
+    # Семейства для красивого блочного вывода
+    families = [
+        ("✦ Google Gemini", ORDERED_MODEL_LIST[6:10], C_CYAN),
+        ("⚡ DeepSeek AI", ORDERED_MODEL_LIST[10:13], C_INDIGO),
+        ("❖ Anthropic Claude", ORDERED_MODEL_LIST[13:23], C_VIOLET),
+        ("⬡ OpenAI GPT", ORDERED_MODEL_LIST[23:33], C_AMBER),
+        ("◐ Kimi & ⌬ Qwen", ORDERED_MODEL_LIST[33:39], C_GREEN),
+        ("⊛ GLM, Grok, MiniMax & Other", ORDERED_MODEL_LIST[39:], C_MUTED),
+    ]
+
+    for title, group, fam_color in families:
+        print(f"{rgb(*C_DARK, '│')}")
+        print(f"{rgb(*C_DARK, '│')}    {rgb(*fam_color, bold(title))}:")
         
-    print(f"{rgb(*C_DARK, '╰' + '─' * (w - 2) + '╯')}\n")
+        # Выводим в 2 аккуратные колонки с номерами
+        cols = 2
+        for r in range(0, len(group), cols):
+            row_items = group[r:r+cols]
+            line_parts = []
+            for item in row_items:
+                idx = ORDERED_MODEL_LIST.index(item) + 1
+                meta = MODEL_METADATA.get(item, {})
+                icon_str = rgb(*meta.get("color", fam_color), meta.get("icon", "◈"))
+                is_curr = (item == current_model)
+                name_fmt = rgb(*C_GREEN, bold(f"{item:<25}")) if is_curr else f"{item:<25}"
+                line_parts.append(f"{rgb(*C_AMBER, f'[{idx:2d}]')} {icon_str} {name_fmt}")
+            print(f"{rgb(*C_DARK, '│')}      " + "    ".join(line_parts))
+
+    print(f"{rgb(*C_DARK, '╰' + '─' * 78 + '╯')}\n")
+
+
+def resolve_model(choice: str, default: str = DEFAULT_MODEL) -> str:
+    """Разрешает выбор модели по номеру 1..53, псевдониму или имени."""
+    clean = choice.strip().lower()
+    if not clean:
+        return default
+
+    # 1. По номеру в упорядоченном каталоге
+    if clean.isdigit():
+        idx = int(clean) - 1
+        if 0 <= idx < len(ORDERED_MODEL_LIST):
+            return ORDERED_MODEL_LIST[idx]
+
+    # 2. Псевдонимы
+    aliases = {
+        "gemini": "gemini-3.8-flash",
+        "flash": "gemini-3.8-flash",
+        "deepseek": "deepseek-v4-pro",
+        "deepseek-flash": "deepseek-v4.1-flash",
+        "opus": "claude-opus-5-5",
+        "sonnet": "claude-sonnet-5",
+        "kimi": "kimi-k3.1-pro",
+        "gpt": "gpt-6-sol",
+        "qwen": "qwen-4-max",
+        "grok": "grok-4.7"
+    }
+    if clean in aliases:
+        return aliases[clean]
+
+    # 3. Точное или частичное совпадение
+    for m in ORDERED_MODEL_LIST:
+        if m.lower() == clean:
+            return m
+    for m in ORDERED_MODEL_LIST:
+        if clean in m.lower():
+            return m
+
+    return default
 
 
 # ------------------------------------------------------------------------------
 # АНТИ-ЗАЦИКЛИВАНИЕ И ЗАЩИТА ТОКЕНОВ (LOOP BREAKER & TOKEN GUARDIAN)
 # ------------------------------------------------------------------------------
 class ExecutionGuardian:
-    """
-    Защищает от бесконечных циклов, повтора одинаковых ошибок
-    и паразитного расхода токенов.
-    """
     def __init__(self):
-        self.call_history: list[str] = []
-        self.output_history: list[str] = []
         self.repeat_counts: dict[str, int] = {}
 
     def register_call(self, tool_name: str, payload: str) -> tuple[bool, str]:
-        """
-        Проверяет, не зациклилась ли модель на одном действии.
-        Возвращает (is_loop, message).
-        """
         sig = hashlib.md5(f"{tool_name}:{payload.strip()}".encode("utf-8")).hexdigest()
         count = self.repeat_counts.get(sig, 0) + 1
         self.repeat_counts[sig] = count
@@ -230,17 +459,13 @@ class ExecutionGuardian:
         if count >= 2:
             SESSION_STATS["loops_intercepted"] += 1
             return True, (
-                f"[⚡ LOOP BREAKER INTERCEPT]: Обнаружен повторный вызов `{tool_name}` с идентичными параметрами!\n"
-                f"Модели ЗАПРЕЩЕНО повторять одно и то же действие. Немедленно смени стратегию, "
-                f"используй другой подход или переходи к формированию финального отчёта."
+                f"[⚡ LOOP BREAKER INTERCEPT]: Обнаружен повторный вызов `{tool_name}`!\n"
+                f"Модели ЗАПРЕЩЕНО повторять одно и то же действие. Смени стратегию решения "
+                f"или сформируй итоговый отчёт руководителю."
             )
         return False, ""
 
     def compress_output(self, out: str, max_chars: int = 2400) -> str:
-        """
-        Умное сжатие вывода: сохраняет начало (контекст) и конец (ошибки/результат),
-        отсекая середину, чтобы не раздувать контекст до сотен тысяч токенов.
-        """
         clean = out.strip()
         if not clean:
             return "(Успешно выполнено, вывод пуст)"
@@ -250,33 +475,18 @@ class ExecutionGuardian:
         head = clean[:1200]
         tail = clean[-1200:]
         omitted = len(clean) - 2400
-        return f"{head}\n\n... [MIND GUARDIAN: пропущено {omitted} символов повторяющегося вывода] ...\n\n{tail}"
+        return f"{head}\n\n... [MIND GUARDIAN: пропущено {omitted} символов вывода] ...\n\n{tail}"
 
 
 # ------------------------------------------------------------------------------
-# ВЫЗОВ SMARTAPI И СЕТЕВОЙ СЛОЙ
+# ВЫЗОВ SMARTAPI И ВЫПОЛНЕНИЕ ИНСТРУМЕНТОВ
 # ------------------------------------------------------------------------------
-def fetch_smartapi_models(api_key: str = DEFAULT_API_KEY) -> list[str]:
-    url = f"{DEFAULT_BASE_URL}/models"
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"})
-    try:
-        with urllib.request.urlopen(req, timeout=8, context=SSL_CTX) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            models = sorted([m["id"] for m in data.get("data", []) if "id" in m])
-            if models:
-                return models
-    except Exception:
-        pass
-    return sorted(FALLBACK_MODELS)
-
-
 def call_smartapi(messages: list[dict], model: str, api_key: str = DEFAULT_API_KEY) -> str:
-    """Выполняет вызов модели с защитой от пустых ответов и таймаутов."""
     url = f"{DEFAULT_BASE_URL}/chat/completions"
     payload = {
         "model": model,
         "messages": messages,
-        "max_tokens": 16384,  # Полный размер генерации без искусственных лимитов
+        "max_tokens": 16384,
         "temperature": 0.2
     }
     data = json.dumps(payload).encode("utf-8")
@@ -290,9 +500,7 @@ def call_smartapi(messages: list[dict], model: str, api_key: str = DEFAULT_API_K
     )
 
     SESSION_STATS["total_requests"] += 1
-    # Оценка токенов на входе
-    in_tokens = sum(len(m.get("content", "")) // 4 for m in messages)
-    SESSION_STATS["total_tokens_est"] += in_tokens
+    SESSION_STATS["total_tokens_est"] += sum(len(m.get("content", "")) // 4 for m in messages)
 
     try:
         with urllib.request.urlopen(req, timeout=45, context=SSL_CTX) as resp:
@@ -309,25 +517,21 @@ def call_smartapi(messages: list[dict], model: str, api_key: str = DEFAULT_API_K
                 ans = str(reasoning).strip()
             else:
                 finish_reason = choice.get("finish_reason", "unknown")
-                ans = f"[MIND ERROR: Модель {model} вернула пустой контент (finish_reason='{finish_reason}'). Переключитесь на /model gemini]"
+                ans = f"[MIND: Пустой контент от {model} (finish_reason='{finish_reason}'). Переключитесь на /model gemini]"
 
             SESSION_STATS["total_tokens_est"] += len(ans) // 4
             return ans
 
     except urllib.error.HTTPError as e:
         err_body = e.read().decode("utf-8", errors="replace")
-        return f"[MIND HTTP {e.code}]: {err_body} (Рекомендуется переключиться на /model gemini)"
+        return f"[MIND HTTP {e.code}]: {err_body} (Попробуйте /model gemini)"
     except KeyboardInterrupt:
         return "[MIND: Запрос прерван пользователем (Ctrl+C)]"
     except Exception as e:
-        return f"[MIND Сбой связи]: {e} (Попробуйте /model gemini)"
+        return f"[MIND Ошибка связи]: {e} (Попробуйте /model gemini)"
 
 
-# ------------------------------------------------------------------------------
-# АВТОНОМНЫЕ ИНСТРУМЕНТЫ (MIND EXECUTOR)
-# ------------------------------------------------------------------------------
 def execute_mind_tools(text: str, guardian: ExecutionGuardian) -> tuple[bool, str]:
-    """Исполняет инструменты, вызванные моделью, с контролем циклов."""
     actions = []
 
     # 1. PowerShell: ```powershell cmd ```
@@ -359,7 +563,7 @@ def execute_mind_tools(text: str, guardian: ExecutionGuardian) -> tuple[bool, st
             if res.stderr:
                 raw_out += "\n[Ошибки / Stderr]:\n" + res.stderr
             compressed = guardian.compress_output(raw_out)
-            render_box("РЕЗУЛЬТАТ ВЫПОЛНЕНИЯ", compressed[:400] + ("..." if len(compressed) > 400 else ""), C_MUTED)
+            render_box("РЕЗУЛЬТАТ", compressed[:350] + ("..." if len(compressed) > 350 else ""), C_MUTED)
             actions.append(f"[Результат команды `{cmd_clean}`]:\n{compressed}")
         except subprocess.TimeoutExpired:
             actions.append(f"[Таймаут]: Команда `{cmd_clean}` выполнялась более 90 секунд.")
@@ -427,7 +631,7 @@ def execute_mind_tools(text: str, guardian: ExecutionGuardian) -> tuple[bool, st
         folder = Path(folder_str)
         if not folder.is_absolute():
             folder = USER_HOME / folder
-        render_box("ОТКРЫТИЕ ПРОВОДНИКА", str(folder), C_INDIGO)
+        render_box("ПРОВОДНИК", str(folder), C_INDIGO)
         try:
             if folder.exists():
                 subprocess.Popen(["explorer.exe", str(folder)])
@@ -443,23 +647,22 @@ def execute_mind_tools(text: str, guardian: ExecutionGuardian) -> tuple[bool, st
 
 
 def mind_turn(conversation: list[dict], model: str, guardian: ExecutionGuardian, api_key: str = DEFAULT_API_KEY) -> str:
-    """
-    Автономный ReAct-цикл Mind CLI:
-    Решает задачу до 6 автономных шагов. Защищён от зацикливания и раздувания токенов.
-    """
+    """Автономный цикл с живой анимацией мышления и защитой токенов."""
     max_steps = 6
     for step in range(1, max_steps + 1):
-        # Sliding Window Context Pruning: System Prompt + последние 14 сообщений
         if len(conversation) > 16:
             active_conv = [conversation[0]] + conversation[-14:]
         else:
             active_conv = conversation
 
         render_hud(model, status=f"THINKING // STEP {step}", step=step)
-        reply = call_smartapi(active_conv, model=model, api_key=api_key)
+
+        # Запуск живой плавной анимации мышления
+        with ThinkingAnimation(model):
+            reply = call_smartapi(active_conv, model=model, api_key=api_key)
 
         if not reply or not str(reply).strip():
-            return f"[MIND: Пустой ответ модели {model}. Рекомендуется сменить модель через /models]"
+            return f"[MIND: Модель {model} не вернула контент. Рекомендуется сменить модель через /models]"
 
         has_tools, tool_out = execute_mind_tools(reply, guardian)
         if has_tools:
@@ -468,21 +671,17 @@ def mind_turn(conversation: list[dict], model: str, guardian: ExecutionGuardian,
                 "role": "user",
                 "content": (
                     f"{tool_out}\n\n"
-                    f"[ИНСТРУКЦИЯ ДЛЯ МОДЕЛИ]: Продолжай автономное решение задачи. "
-                    f"Если требуются дальнейшие команды или правка файлов — вызывай их сейчас. "
-                    f"Если задача решена — выдай итоговый структурированный отчёт: ЧТО СДЕЛАНО, РЕЗУЛЬТАТ."
+                    f"[ИНСТРУКЦИЯ]: Продолжай автономное решение задачи. "
+                    f"Если требуются действия — вызывай инструменты. "
+                    f"Если задача решена — выдай финальный чёткий отчёт: ЧТО СДЕЛАНО, РЕЗУЛЬТАТ."
                 )
             })
         else:
-            # Модель закончила инструменты и выдала финальный ответ
             return reply
 
     return reply
 
 
-# ------------------------------------------------------------------------------
-# СИСТЕМНЫЙ ПРОМПТ В СТИЛЕ MIND EXECUTIVE
-# ------------------------------------------------------------------------------
 def build_mind_system_prompt() -> str:
     return f"""ТЫ — АВТОНОМНЫЙ ИИ-ИНЖЕНЕР СИСТЕМЫ MIND ДЛЯ ТАГИРА ИСКАЛИЕВА (ЭКОСИСТЕМА MIND).
 ТВОЙ УРОВЕНЬ — АБСОЛЮТНАЯ АВТОНОМНОСТЬ, ВЫСОКАЯ ТОЧНОСТЬ, СТАНДАРТЫ TEENAGE ENGINEERING / ANDURIL.
@@ -503,7 +702,7 @@ def build_mind_system_prompt() -> str:
 2. СТРУКТУРА ОТВЕТА:
    - ✅ ЧТО СДЕЛАНО
    - 📊 РЕЗУЛЬТАТ
-   - ⚡ СЛЕДУЮЩИЙ ШАГ (ссылка или готовый статус)
+   - ⚡ СЛЕДУЮЩИЙ ШАГ
 
 ИНСТРУМЕНТЫ:
 ```powershell
@@ -524,32 +723,23 @@ def build_mind_system_prompt() -> str:
 
 
 # ------------------------------------------------------------------------------
-# ГЛАВНЫЙ ИНТЕРАКТИВНЫЙ ЦИКЛ (MIND REPL)
+# ГЛАВНЫЙ ИНТЕРАКТИВНЫЙ РЕЖИМ (REPL)
 # ------------------------------------------------------------------------------
 def main():
     render_banner()
-    models = fetch_smartapi_models()
-    render_models_catalog(models, current=DEFAULT_MODEL)
+    render_structured_catalog(current_model=DEFAULT_MODEL)
 
     try:
-        user_choice = input(f"{gradient('◆ ВЫБОР МОДЕЛИ', C_VIOLET, C_CYAN)} [1-{len(models)}] (Enter = {DEFAULT_MODEL}): ").strip()
+        user_choice = input(f"{gradient('◆ ВЫБОР МОДЕЛИ', C_VIOLET, C_CYAN)} [1-{len(ORDERED_MODEL_LIST)}] (Enter = {DEFAULT_MODEL}): ").strip()
     except (KeyboardInterrupt, EOFError):
         print("\nЗавершение.")
         return
 
-    # Разрешение модели
-    current_model = DEFAULT_MODEL
-    if user_choice.isdigit():
-        idx = int(user_choice) - 1
-        if 0 <= idx < len(models):
-            current_model = models[idx]
-    elif user_choice:
-        for m in models:
-            if user_choice.lower() in m.lower():
-                current_model = m
-                break
+    current_model = resolve_model(user_choice, default=DEFAULT_MODEL)
+    meta = MODEL_METADATA.get(current_model, {"icon": "◈", "color": C_CYAN})
+    icon = rgb(*meta["color"], meta["icon"])
 
-    print(f"\n{rgb(*C_GREEN, '✔')} Активный интеллект: {gradient(current_model, C_CYAN, C_BLUE)}\n")
+    print(f"\n{rgb(*C_GREEN, '✔')} Интеллект активирован: {icon} {gradient(current_model, meta['color'], C_CYAN)}\n")
     render_hud(current_model, status="ONLINE")
 
     guardian = ExecutionGuardian()
@@ -557,11 +747,13 @@ def main():
         {"role": "system", "content": build_mind_system_prompt()}
     ]
 
-    print(f"{rgb(*C_MUTED, 'Команды:')} {rgb(*C_CYAN, '/models')} {rgb(*C_MUTED, '•')} {rgb(*C_CYAN, '/model <имя/номер>')} {rgb(*C_MUTED, '•')} {rgb(*C_CYAN, '/sys')} {rgb(*C_MUTED, '•')} {rgb(*C_CYAN, '/desktop')} {rgb(*C_MUTED, '•')} {rgb(*C_CYAN, '/clear')} {rgb(*C_MUTED, '•')} {rgb(*C_CYAN, 'exit')}\n")
+    print(f"{rgb(*C_MUTED, 'Команды:')} {rgb(*C_CYAN, '/models')} {rgb(*C_MUTED, '•')} {rgb(*C_CYAN, '/model <номер/имя>')} {rgb(*C_MUTED, '•')} {rgb(*C_CYAN, '/sys')} {rgb(*C_MUTED, '•')} {rgb(*C_CYAN, '/desktop')} {rgb(*C_MUTED, '•')} {rgb(*C_CYAN, '/clear')} {rgb(*C_MUTED, '•')} {rgb(*C_CYAN, 'exit')}\n")
 
     while True:
         try:
-            prompt_str = f"{gradient('MIND', C_VIOLET, C_CYAN)} [{rgb(*C_MUTED, current_model)}] ❯ "
+            cur_meta = MODEL_METADATA.get(current_model, {"icon": "◈", "color": C_CYAN})
+            m_icon = rgb(*cur_meta["color"], cur_meta["icon"])
+            prompt_str = f"{gradient('MIND', C_VIOLET, C_CYAN)} [{m_icon} {rgb(*cur_meta['color'], current_model)}] ❯ "
             user_input = input(prompt_str).strip()
         except (KeyboardInterrupt, EOFError):
             print(f"\n{rgb(*C_MUTED, 'Сессия Mind CLI завершена.')}")
@@ -577,7 +769,7 @@ def main():
             break
 
         if cmd_lower == "/models":
-            render_models_catalog(models, current=current_model)
+            render_structured_catalog(current_model=current_model)
             continue
 
         if cmd_lower == "/clear":
@@ -590,7 +782,6 @@ def main():
             continue
 
         if cmd_lower == "/sys":
-            # Быстрый аппаратный срез
             res = subprocess.run(
                 ["powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize,FreePhysicalMemory; Get-PSDrive C | Select-Object Used,Free"],
                 capture_output=True, text=True, encoding="utf-8"
@@ -606,23 +797,17 @@ def main():
         if user_input.startswith("/model"):
             parts = user_input.split(maxsplit=1)
             if len(parts) > 1:
-                arg = parts[1].strip()
-                if arg.isdigit():
-                    idx = int(arg) - 1
-                    if 0 <= idx < len(models):
-                        current_model = models[idx]
-                else:
-                    for m in models:
-                        if arg.lower() in m.lower():
-                            current_model = m
-                            break
-                print(f"{rgb(*C_GREEN, '✔ Интеллект переключен на:')} {gradient(current_model, C_CYAN, C_BLUE)}\n")
+                target = resolve_model(parts[1], default=current_model)
+                current_model = target
+                new_meta = MODEL_METADATA.get(current_model, {"icon": "◈", "color": C_CYAN})
+                n_icon = rgb(*new_meta["color"], new_meta["icon"])
+                print(f"{rgb(*C_GREEN, '✔ Интеллект переключен на:')} {n_icon} {gradient(current_model, new_meta['color'], C_CYAN)}\n")
                 render_hud(current_model, status="ONLINE")
             else:
-                print(f"Текущая модель: {current_model}. Наберите /models для выбора.\n")
+                print(f"Текущая модель: {current_model}. Наберите /models для вывода каталога.\n")
             continue
 
-        # Передача запроса в ReAct цикл
+        # ReAct выполнение задачи
         conversation.append({"role": "user", "content": user_input})
         start_t = time.time()
 
@@ -634,7 +819,6 @@ def main():
         elapsed = time.time() - start_t
         conversation.append({"role": "assistant", "content": answer})
 
-        # Финальный красивый вывод ответа
         print()
         render_box(f"ОТВЕТ АССИСТЕНТА  ({elapsed:.1f}s)", answer, C_VIOLET)
         render_hud(current_model, status="IDLE")
